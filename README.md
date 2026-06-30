@@ -1,5 +1,7 @@
 # ByteScry
 
+[中文](README.zh-CN.md)
+
 ByteScry is a desktop-first Java and Android decompiler workbench. It opens
 `.class`, `.jar`, class directories, `.apk`, `.dex`, `.aab`, `.apks`, `.apkm`,
 and `.xapk` artifacts for source inspection, engine comparison, bytecode view,

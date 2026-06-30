@@ -329,20 +329,25 @@ std::filesystem::path EnsureExtracted(const std::vector<uint8_t>& payload) {
     std::filesystem::create_directories(extractRoot);
     std::filesystem::path zipPath = extractRoot / L"payload.zip";
     WritePayloadZip(zipPath, payload);
-    if (!ExtractZipWithTar(zipPath, extractRoot)) {
+    bool extractedSynchronously = ExtractZipWithTar(zipPath, extractRoot);
+    if (!extractedSynchronously) {
         ExtractZipWithShell(zipPath, extractRoot);
     }
     std::error_code ignored;
-    std::filesystem::remove(zipPath, ignored);
+    if (extractedSynchronously) {
+        std::filesystem::remove(zipPath, ignored);
+    }
 
     for (int i = 0; i < 480; i++) {
         appExe = FindExtractedApp(extractRoot);
         if (!appExe.empty()) {
+            std::filesystem::remove(zipPath, ignored);
             CleanupExtractionCache(extractRoot);
             return appExe;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
+    std::filesystem::remove(zipPath, ignored);
     throw std::runtime_error("Embedded ByteScry application was not found after extraction.");
 }
 
