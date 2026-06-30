@@ -8,6 +8,14 @@
     <baseDirectory>bytescry-gui-${project.version}-${release.platform}</baseDirectory>
     <fileSets>
         <fileSet>
+            <directory>${maven.multiModuleProjectDirectory}</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>LICENSE</include>
+                <include>THIRD_PARTY_NOTICES.md</include>
+            </includes>
+        </fileSet>
+        <fileSet>
             <directory>${project.build.directory}/generated-launchers</directory>
             <outputDirectory>bin</outputDirectory>
             <includes>

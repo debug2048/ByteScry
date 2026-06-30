@@ -6,8 +6,7 @@ This repository builds the `bytescry-*` artifacts for the ByteScry application.
 
 - JDK 17+
 - Apache Maven 3.8+
-- Internet access for Maven dependencies, except the project-local CFR artifact
-  under `repo/`
+- Internet access for Maven dependencies
 - Windows release builds require a JDK with `jlink` and `jmods`. They produce a
   Windows runtime image and should be run on Windows.
 
@@ -236,14 +235,8 @@ Important versions are defined in the parent `pom.xml`:
 - JUnit 5.10.2
 - Launch4j Maven Plugin 2.5.3 for the Windows `.exe` launcher
 
-CFR is stored in the project-local Maven repository:
-
-```text
-repo/org/benf/cfr/0.152/
-```
-
-To upgrade CFR, replace the local JAR/POM and update `<cfr.version>` in the
-parent POM.
+Dependencies are resolved from Maven repositories. To upgrade CFR or another
+engine dependency, update the version property in the parent POM and rebuild.
 
 ## Clean Generated Files
 
@@ -251,8 +244,7 @@ parent POM.
 mvn clean
 ```
 
-This removes Maven `target/` directories. It does not remove the checked-in
-project-local `repo/` dependency.
+This removes Maven `target/` directories.
 
 ## Release Checklist
 
@@ -276,7 +268,10 @@ Before uploading to GitHub or attaching a release artifact:
 14. Export Java sources.
 15. Export Android sources.
 16. Confirm README and docs mention the current artifact names.
-17. Confirm `LICENSE` is present.
+17. Confirm `LICENSE` and `THIRD_PARTY_NOTICES.md` are present in archive
+    packages.
+18. Attach `THIRD_PARTY_NOTICES.md` alongside the Windows single-file exe on
+    GitHub Releases.
 
 The Launch4j-generated Windows `.exe` is unsigned. For public releases, code
 signing is recommended to reduce antivirus false positives.

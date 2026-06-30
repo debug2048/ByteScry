@@ -26,7 +26,6 @@ packages.
 | `bytescry-cli` | picocli wrapper for Java `.class`, `.jar`, and directory workflows |
 | `bytescry-gui` | JavaFX desktop application |
 | `bytescry-tests` | Versioned Java sample tests |
-| `repo` | Project-local CFR artifact |
 
 ## High-Level Architecture
 

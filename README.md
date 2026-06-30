@@ -149,8 +149,8 @@ JADX output more reliably than the current CLI wrapper.
 ├── bytescry-cli/     # picocli command-line entry point
 ├── bytescry-gui/     # JavaFX desktop application
 ├── bytescry-tests/   # versioned Java sample tests
-├── docs/                # usage, design, and build documentation
-└── repo/                # project-local CFR artifact
+├── docs/             # usage, design, and build documentation
+└── scripts/          # release helper scripts
 ```
 
 ## Documentation
@@ -173,3 +173,7 @@ JADX output more reliably than the current CLI wrapper.
 ## License
 
 MIT License. See [LICENSE](LICENSE).
+
+ByteScry depends on third-party open-source components. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency license notes
+and release packaging obligations.

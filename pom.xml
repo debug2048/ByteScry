@@ -17,14 +17,6 @@
         <name>ByteScry Contributors</name>
     </organization>
 
-    <repositories>
-        <repository>
-            <id>project-local</id>
-            <name>Project Local Repository</name>
-            <url>file://${maven.multiModuleProjectDirectory}/repo</url>
-        </repository>
-    </repositories>
-
     <modules>
         <module>bytescry-core</module>
         <module>bytescry-cli</module>

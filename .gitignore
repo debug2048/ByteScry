@@ -13,7 +13,6 @@ dependency-reduced-pom.xml
 # Java artifacts
 *.class
 *.jar
-!repo/**/*.jar
 *.war
 *.ear
 
