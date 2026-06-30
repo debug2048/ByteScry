@@ -27,7 +27,7 @@ jobs:
           cache: maven
 
       - name: Run tests
-        run: mvn -B test
+        run: mvn -B -Djavafx.classifier=linux test
 
   release-linux:
     name: Build Linux Release
