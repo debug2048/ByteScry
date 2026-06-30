@@ -1,0 +1,7 @@
+#!/bin/sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LIB_DIR="$SCRIPT_DIR/../lib"
+JAVAFX_DIR="$SCRIPT_DIR/../javafx"
+
+exec java --module-path "$JAVAFX_DIR" --add-modules javafx.controls -cp "$LIB_DIR/*" com.github.bytescry.gui.ByteScryGuiLauncher "$@"

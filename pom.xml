@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.github.bytescry</groupId>
+    <artifactId>bytescry-parent</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <name>ByteScry Parent</name>
+    <description>A pluggable Java decompiler supporting Java 7 through Java 17</description>
+    <inceptionYear>2026</inceptionYear>
+
+    <organization>
+        <name>ByteScry Contributors</name>
+    </organization>
+
+    <repositories>
+        <repository>
+            <id>project-local</id>
+            <name>Project Local Repository</name>
+            <url>file://${maven.multiModuleProjectDirectory}/repo</url>
+        </repository>
+    </repositories>
+
+    <modules>
+        <module>bytescry-core</module>
+        <module>bytescry-cli</module>
+        <module>bytescry-tests</module>
+        <module>bytescry-gui</module>
+    </modules>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+
+        <asm.version>9.7</asm.version>
+        <cfr.version>0.152</cfr.version>
+        <vineflower.version>1.12.0</vineflower.version>
+        <jadx.version>1.5.5</jadx.version>
+        <picocli.version>4.7.6</picocli.version>
+        <junit.version>5.10.2</junit.version>
+        <assertj.version>3.25.3</assertj.version>
+
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>
+        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
+        <maven-assembly-plugin.version>3.7.1</maven-assembly-plugin.version>
+        <maven-jar-plugin.version>3.3.0</maven-jar-plugin.version>
+        <maven-antrun-plugin.version>3.1.0</maven-antrun-plugin.version>
+        <exec-maven-plugin.version>3.3.0</exec-maven-plugin.version>
+        <maven-shade-plugin.version>3.5.1</maven-shade-plugin.version>
+        <launch4j-maven-plugin.version>2.5.3</launch4j-maven-plugin.version>
+        <javafx.version>17.0.2</javafx.version>
+        <javafx.classifier>win</javafx.classifier>
+        <app.displayName>ByteScry</app.displayName>
+        <app.displayVersion>1.0.0</app.displayVersion>
+        <release.platform>portable</release.platform>
+        <cli.assembly.descriptor>src/main/assembly/assembly.xml</cli.assembly.descriptor>
+        <cli.assembly.skip>false</cli.assembly.skip>
+        <gui.assembly.descriptor>src/main/assembly/gui-assembly.xml</gui.assembly.descriptor>
+        <launch4j.skip>true</launch4j.skip>
+        <runtime.image.skip>true</runtime.image.skip>
+        <windows.single.exe.skip>true</windows.single.exe.skip>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Bytecode parsing -->
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm</artifactId>
+                <version>${asm.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm-tree</artifactId>
+                <version>${asm.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm-util</artifactId>
+                <version>${asm.version}</version>
+            </dependency>
+
+            <!-- CFR decompiler engine -->
+            <dependency>
+                <groupId>org.benf</groupId>
+                <artifactId>cfr</artifactId>
+                <version>${cfr.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.vineflower</groupId>
+                <artifactId>vineflower</artifactId>
+                <version>${vineflower.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.skylot</groupId>
+                <artifactId>jadx-cli</artifactId>
+                <version>${jadx.version}</version>
+            </dependency>
+
+            <!-- CLI -->
+            <dependency>
+                <groupId>info.picocli</groupId>
+                <artifactId>picocli</artifactId>
+                <version>${picocli.version}</version>
+            </dependency>
+
+            <!-- JavaFX -->
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-controls</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-graphics</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+
+            <!-- Test -->
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.assertj</groupId>
+                <artifactId>assertj-core</artifactId>
+                <version>${assertj.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven-compiler-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>${maven-resources-plugin.version}</version>
+                    <configuration>
+                        <encoding>${project.build.sourceEncoding}</encoding>
+                        <propertiesEncoding>${project.build.sourceEncoding}</propertiesEncoding>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-assembly-plugin</artifactId>
+                    <version>${maven-assembly-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${maven-jar-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-antrun-plugin</artifactId>
+                    <version>${maven-antrun-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>exec-maven-plugin</artifactId>
+                    <version>${exec-maven-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>com.akathist.maven.plugins.launch4j</groupId>
+                    <artifactId>launch4j-maven-plugin</artifactId>
+                    <version>${launch4j-maven-plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>release-windows</id>
+            <properties>
+                <javafx.classifier>win</javafx.classifier>
+                <release.platform>windows-x64</release.platform>
+                <cli.assembly.skip>true</cli.assembly.skip>
+                <gui.assembly.descriptor>src/main/assembly/gui-windows-assembly.xml</gui.assembly.descriptor>
+                <launch4j.skip>false</launch4j.skip>
+                <runtime.image.skip>false</runtime.image.skip>
+                <windows.single.exe.skip>false</windows.single.exe.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>release-linux</id>
+            <properties>
+                <javafx.classifier>linux</javafx.classifier>
+                <release.platform>linux-x64</release.platform>
+                <cli.assembly.descriptor>src/main/assembly/linux-assembly.xml</cli.assembly.descriptor>
+                <gui.assembly.descriptor>src/main/assembly/gui-assembly.xml</gui.assembly.descriptor>
+                <launch4j.skip>true</launch4j.skip>
+            </properties>
+        </profile>
+    </profiles>
+</project>

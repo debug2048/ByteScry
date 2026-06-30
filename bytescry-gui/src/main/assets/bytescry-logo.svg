@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title>ByteScry logo</title>
+  <desc>An abstract byte prism mark for a decompiler desktop tool.</desc>
+  <defs>
+    <linearGradient id="bg" x1="28" y1="20" x2="228" y2="236" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#182433"/>
+      <stop offset="1" stop-color="#0b1118"/>
+    </linearGradient>
+    <linearGradient id="core" x1="70" y1="44" x2="188" y2="214" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset=".52" stop-color="#4f9cff"/>
+      <stop offset="1" stop-color="#1d3f5f"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="44" fill="url(#bg)"/>
+  <ellipse cx="128" cy="206" rx="54" ry="15" fill="#000000" opacity=".26"/>
+  <path d="M128 42l60 35v78l-60 59-60-59V77z" fill="#172433" stroke="#314256" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M128 42l60 35-60 38-60-38z" fill="url(#core)"/>
+  <path d="M68 77l60 38v99l-60-59z" fill="#25536b"/>
+  <path d="M188 77l-60 38v99l60-59z" fill="#1f4868"/>
+  <path d="M128 115l60-38v78z" fill="#377db0" opacity=".86"/>
+  <path d="M128 115L68 77v78z" fill="#3ed0bd" opacity=".72"/>
+  <path d="M128 115l31 30-31 31-31-31z" fill="#0d1520" opacity=".82"/>
+  <path d="M110 145l18-18 18 18-18 18z" fill="#65ead5"/>
+  <circle cx="92" cy="95" r="7" fill="#f0c75e"/>
+  <circle cx="164" cy="95" r="7" fill="#d9e4ef"/>
+  <circle cx="128" cy="190" r="7" fill="#5a9cff"/>
+  <path d="M92 95l36 20 36-20" fill="none" stroke="#d8e2ec" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity=".32"/>
+  <path d="M128 115v75" fill="none" stroke="#d8e2ec" stroke-width="5" stroke-linecap="round" opacity=".22"/>
+  <path d="M87 80l41-24 41 24" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity=".18"/>
+</svg>

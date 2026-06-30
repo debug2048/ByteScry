@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.github.bytescry</groupId>
+        <artifactId>bytescry-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>bytescry-gui</artifactId>
+    <packaging>jar</packaging>
+    <name>ByteScry GUI</name>
+    <description>JavaFX graphical interface for ByteScry</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.github.bytescry</groupId>
+            <artifactId>bytescry-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>${javafx.classifier}</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>${javafx.classifier}</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+            <resource>
+                <directory>${project.build.directory}/generated-resources/icons</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <configuration>
+                    <skip>${runtime.image.skip}</skip>
+                    <target>
+                        <delete dir="${project.build.directory}/generated-runtime/runtime"/>
+                        <mkdir dir="${project.build.directory}/generated-runtime"/>
+                        <exec executable="${java.home}/bin/jlink" failonerror="true">
+                            <arg value="--module-path"/>
+                            <arg value="${java.home}/jmods"/>
+                            <arg value="--add-modules"/>
+                            <arg value="java.base,java.desktop,java.datatransfer,java.logging,java.management,java.naming,java.prefs,java.xml,java.compiler,jdk.charsets,jdk.crypto.ec,jdk.unsupported"/>
+                            <arg value="--strip-debug"/>
+                            <arg value="--no-header-files"/>
+                            <arg value="--no-man-pages"/>
+                            <arg value="--compress=2"/>
+                            <arg value="--output"/>
+                            <arg value="${project.build.directory}/generated-runtime/runtime"/>
+                        </exec>
+                    </target>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-windows-runtime</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.akathist.maven.plugins.launch4j</groupId>
+                <artifactId>launch4j-maven-plugin</artifactId>
+                <configuration>
+                    <skip>${launch4j.skip}</skip>
+                    <headerType>gui</headerType>
+                    <outfile>${project.build.directory}/generated-launchers/bytescry.exe</outfile>
+                    <jar>${project.build.directory}/${project.build.finalName}.jar</jar>
+                    <icon>${project.build.directory}/generated-windows-icon/bytescry.ico</icon>
+                    <dontWrapJar>false</dontWrapJar>
+                    <classPath>
+                        <mainClass>com.github.bytescry.gui.ByteScryGuiLauncher</mainClass>
+                        <addDependencies>true</addDependencies>
+                        <jarLocation>%EXEDIR%/../lib/</jarLocation>
+                    </classPath>
+                    <jre>
+                        <path>%EXEDIR%/../runtime</path>
+                        <minVersion>17</minVersion>
+                        <opts>
+                            <opt>--module-path</opt>
+                            <opt>%EXEDIR%/../javafx</opt>
+                            <opt>--add-modules</opt>
+                            <opt>javafx.controls</opt>
+                        </opts>
+                    </jre>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-windows-exe</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>launch4j</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <configuration>
+                    <descriptors>
+                        <descriptor>${gui.assembly.descriptor}</descriptor>
+                    </descriptors>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-gui-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>generate-windows-icon</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${launch4j.skip}</skip>
+                            <executable>powershell.exe</executable>
+                            <arguments>
+                                <argument>-NoProfile</argument>
+                                <argument>-ExecutionPolicy</argument>
+                                <argument>Bypass</argument>
+                                <argument>-File</argument>
+                                <argument>${project.basedir}/../scripts/generate-windows-icon.ps1</argument>
+                                <argument>-OutputIco</argument>
+                                <argument>${project.build.directory}/generated-windows-icon/bytescry.ico</argument>
+                                <argument>-OutputPng</argument>
+                                <argument>${project.build.directory}/generated-resources/icons/com/github/bytescry/gui/bytescry-icon.png</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>make-windows-single-exe</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${windows.single.exe.skip}</skip>
+                            <executable>powershell.exe</executable>
+                            <arguments>
+                                <argument>-NoProfile</argument>
+                                <argument>-ExecutionPolicy</argument>
+                                <argument>Bypass</argument>
+                                <argument>-File</argument>
+                                <argument>${project.basedir}/../scripts/package-windows-single-exe.ps1</argument>
+                                <argument>-InputZip</argument>
+                                <argument>${project.build.directory}/${project.build.finalName}-${release.platform}.zip</argument>
+                                <argument>-OutputExe</argument>
+                                <argument>${project.build.directory}/bytescry.exe</argument>
+                                <argument>-SourceFile</argument>
+                                <argument>${project.basedir}/src/main/windows/SingleExeLauncher.cs</argument>
+                                <argument>-IconFile</argument>
+                                <argument>${project.build.directory}/generated-windows-icon/bytescry.ico</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

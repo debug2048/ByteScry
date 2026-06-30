@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+BYTESCRY_HOME="$(cd "$(dirname "$0")/.." || exit 1; pwd)"
+exec java -cp "${BYTESCRY_HOME}/lib/*" com.github.bytescry.cli.ByteScryCli "$@"
