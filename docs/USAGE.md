@@ -5,8 +5,8 @@ scripts, Java packages, and documentation use the `bytescry` name consistently.
 
 ## Requirements
 
-- Windows GUI release: no system Java required. The release asset is a single
-  self-extracting `.exe` with an embedded runtime.
+- Windows GUI release: no system Java or .NET Framework required. The release
+  asset is a native self-extracting `.exe` with an embedded runtime.
 - Linux CLI/GUI releases: Java 17+ is required.
 - Maven is needed only when building from source.
 
@@ -200,8 +200,13 @@ bin/bytescry --engine vineflower --output out path/to/app.jar
 bin/bytescry --engine simple --bytecode path/to/Hello.class
 ```
 
-Use the GUI for Android artifacts. The GUI invokes JADX as a whole-artifact
-decompiler and indexes the generated Java source files for browsing.
+For Android artifacts, the GUI is still the recommended workflow because it
+indexes the whole JADX output for browsing. The CLI can export Android sources
+when `--engine jadx` and `--output` are used:
+
+```bash
+bin/bytescry --engine jadx --output out path/to/app.apk
+```
 
 ## Troubleshooting
 

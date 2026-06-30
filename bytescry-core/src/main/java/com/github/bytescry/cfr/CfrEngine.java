@@ -4,6 +4,7 @@ import com.github.bytescry.api.DecompilerEngine;
 import com.github.bytescry.model.ClassFile;
 import com.github.bytescry.model.DecompilationResult;
 import com.github.bytescry.model.DecompilerOptions;
+import com.github.bytescry.util.JavaRuntime;
 import org.objectweb.asm.ClassReader;
 
 import java.io.File;
@@ -32,6 +33,7 @@ public class CfrEngine implements DecompilerEngine {
 
     public static final String NAME = "cfr";
     private static final long CFR_TIMEOUT_SECONDS = 90;
+    private static final int MAX_CACHE_ENTRIES = 8;
     private static final Map<String, Map<String, String>> SOURCE_CACHE = new ConcurrentHashMap<>();
 
     @Override
@@ -147,7 +149,7 @@ public class CfrEngine implements DecompilerEngine {
             return cached;
         }
         Map<String, String> sources = runCfr(input, options);
-        SOURCE_CACHE.put(cacheKey, sources);
+        putCachedSources(cacheKey, sources);
         return sources;
     }
 
@@ -165,7 +167,7 @@ public class CfrEngine implements DecompilerEngine {
         Path nestedLibDir = Files.createTempDirectory("bytescry-cfr-nested-libs-");
         try {
             List<String> args = new ArrayList<>();
-            args.add("java");
+            args.add(JavaRuntime.javaExecutable());
             args.add("-cp");
             args.add(findCfrJar());
             args.add("org.benf.cfr.reader.Main");
@@ -442,6 +444,17 @@ public class CfrEngine implements DecompilerEngine {
         long size = Files.isRegularFile(input) ? Files.size(input) : 0;
         return input.toAbsolutePath().normalize() + "|" + modified + "|" + size
                 + "|" + options.getInputPath() + "|" + options.isBestEffort() + "|" + options.getExtraClassPath();
+    }
+
+    private void putCachedSources(String cacheKey, Map<String, String> sources) {
+        while (SOURCE_CACHE.size() >= MAX_CACHE_ENTRIES && !SOURCE_CACHE.containsKey(cacheKey)) {
+            String firstKey = SOURCE_CACHE.keySet().stream().findFirst().orElse(null);
+            if (firstKey == null) {
+                break;
+            }
+            SOURCE_CACHE.remove(firstKey);
+        }
+        SOURCE_CACHE.put(cacheKey, sources);
     }
 
     private String findCfrJar() throws IOException {

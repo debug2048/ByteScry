@@ -19,32 +19,63 @@ $outputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromP
 $outputDir = Split-Path -Parent $outputPath
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
-$csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-if (-not (Test-Path -LiteralPath $csc)) {
-    $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe'
-}
-if (-not (Test-Path -LiteralPath $csc)) {
-    throw 'Could not find the .NET Framework C# compiler used to build the Windows single-file launcher.'
-}
-
-$frameworkDir = Split-Path -Parent $csc
 $stubExe = Join-Path $outputDir 'bytescry-single-launcher-stub.exe'
-$cscOptions = @('/nologo', '/target:winexe', '/optimize+', '/platform:anycpu', "/out:$stubExe")
-if ($IconFile) {
-    $iconPath = (Resolve-Path -LiteralPath $IconFile).Path
-    $cscOptions += "/win32icon:$iconPath"
+$resourceFile = Join-Path $outputDir 'bytescry-single-launcher.rc'
+$compiledResource = Join-Path $outputDir 'bytescry-single-launcher.res'
+$objectFile = Join-Path $outputDir 'bytescry-single-launcher.obj'
+$sourceExtension = [IO.Path]::GetExtension($sourcePath).ToLowerInvariant()
+if ($sourceExtension -ne '.cpp') {
+    throw "Windows single-file launcher source must be a native C++ file: $sourcePath"
 }
-$references = @(
-    (Join-Path $frameworkDir 'System.dll'),
-    (Join-Path $frameworkDir 'System.Core.dll'),
-    (Join-Path $frameworkDir 'System.Windows.Forms.dll'),
-    (Join-Path $frameworkDir 'System.IO.Compression.dll'),
-    (Join-Path $frameworkDir 'System.IO.Compression.FileSystem.dll')
-)
 
-& $csc $cscOptions ($references | ForEach-Object { "/reference:$_" }) $sourcePath
+$iconPath = $null
+if ($IconFile) {
+    $iconPath = (Resolve-Path -LiteralPath $IconFile).Path.Replace('\', '\\')
+    Set-Content -LiteralPath $resourceFile -Encoding ASCII -Value "IDI_ICON1 ICON `"$iconPath`""
+}
+
+function Find-VcVars {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path -LiteralPath $vswhere) {
+        $installationPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if ($LASTEXITCODE -eq 0 -and $installationPath) {
+            $candidate = Join-Path $installationPath 'VC\Auxiliary\Build\vcvars64.bat'
+            if (Test-Path -LiteralPath $candidate) {
+                return $candidate
+            }
+        }
+    }
+    $candidates = @(
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat"
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+$vcVars = Find-VcVars
+if (-not $vcVars) {
+    throw 'Could not find Visual Studio Build Tools with the MSVC C++ toolchain. Install "Desktop development with C++" to build bytescry.exe.'
+}
+
+$compileCommands = @()
+if ($IconFile) {
+    $compileCommands += "rc.exe /nologo /fo `"$compiledResource`" `"$resourceFile`""
+}
+$resourceArg = if ($IconFile) { "`"$compiledResource`"" } else { "" }
+$compileCommands += "cl.exe /nologo /std:c++17 /EHsc /O2 /MT /DUNICODE /D_UNICODE /W3 /Fo`"$objectFile`" `"$sourcePath`" $resourceArg /Fe:`"$stubExe`" /link /SUBSYSTEM:WINDOWS shell32.lib ole32.lib oleaut32.lib uuid.lib user32.lib"
+
+$cmd = "`"$vcVars`" >nul && " + ($compileCommands -join ' && ')
+cmd.exe /d /s /c $cmd
 if ($LASTEXITCODE -ne 0) {
-    throw "C# compiler failed with exit code $LASTEXITCODE."
+    throw "MSVC compiler failed with exit code $LASTEXITCODE."
 }
 
 Copy-Item -LiteralPath $stubExe -Destination $outputPath -Force
@@ -64,4 +95,13 @@ finally {
 }
 
 Remove-Item -LiteralPath $stubExe -Force
+if (Test-Path -LiteralPath $resourceFile) {
+    Remove-Item -LiteralPath $resourceFile -Force
+}
+if (Test-Path -LiteralPath $compiledResource) {
+    Remove-Item -LiteralPath $compiledResource -Force
+}
+if (Test-Path -LiteralPath $objectFile) {
+    Remove-Item -LiteralPath $objectFile -Force
+}
 Write-Host "Built Windows single-file executable: $outputPath"

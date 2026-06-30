@@ -67,9 +67,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -135,6 +137,7 @@ public class ByteScryGui extends Application {
     private boolean updatingSourceEngineCombo;
     private String lastCompareQuery;
     private int lastCompareCursor;
+    private long workspaceGeneration;
     private double restoreX;
     private double restoreY;
     private double restoreWidth;
@@ -895,6 +898,7 @@ public class ByteScryGui extends Application {
     }
 
     private void loadPath(Path path) {
+        long generation = ++workspaceGeneration;
         loadedPath = path;
         loadedClassFiles = List.of();
         selectedClassFile = null;
@@ -925,8 +929,12 @@ public class ByteScryGui extends Application {
 
         CompletableFuture.runAsync(() -> {
             try {
-                loadedClassFiles = loadWorkspaceClasses(path);
+                List<ClassFile> loaded = loadWorkspaceClasses(path);
                 Platform.runLater(() -> {
+                    if (!isCurrentWorkspace(generation)) {
+                        return;
+                    }
+                    loadedClassFiles = loaded;
                     populateClassTree(loadedClassFiles);
                     loadedCountLabel.setText(loadedClassFiles.size() + " class(es)");
                     setStatus("Loaded " + loadedClassFiles.size() + " class(es) from " + path);
@@ -938,6 +946,9 @@ public class ByteScryGui extends Application {
                 });
             } catch (Exception e) {
                 Platform.runLater(() -> {
+                    if (!isCurrentWorkspace(generation)) {
+                        return;
+                    }
                     loadedCountLabel.setText("Load failed");
                     editorTitleLabel.setText("No class selected");
                     editorMetaLabel.setText("Open a file to inspect source and bytecode");
@@ -949,6 +960,10 @@ public class ByteScryGui extends Application {
                 });
             }
         });
+    }
+
+    private boolean isCurrentWorkspace(long generation) {
+        return generation == workspaceGeneration;
     }
 
     private void setWorkspacePathText(String pathText) {
@@ -973,7 +988,39 @@ public class ByteScryGui extends Application {
             }
         }
         ClassFileLoader loader = new ClassFileLoader();
+        if (Files.isDirectory(path)) {
+            List<ClassFile> classes = new ArrayList<>(loader.load(path));
+            List<Path> androidArtifacts = directAndroidArtifacts(path);
+            if (!androidArtifacts.isEmpty()) {
+                Set<String> androidSources = new HashSet<>();
+                for (Path artifact : androidArtifacts) {
+                    androidSources.add(artifact.toString());
+                }
+                classes.removeIf(classFile -> classFile.getClassName().startsWith("artifact/")
+                        && androidSources.contains(classFile.getSource()));
+                DecompilerEngine engine = DecompilerEngineRegistry.get("jadx");
+                if (engine instanceof ArtifactDecompilerEngine artifactEngine) {
+                    for (Path artifact : androidArtifacts) {
+                        classes.addAll(artifactEngine.loadArtifactClasses(artifact,
+                                DEFAULT_OPTIONS.withInputPath(artifact.toString())
+                                        .withBestEffort(true)
+                                        .withFallbackEnabled(true)));
+                    }
+                }
+            }
+            return classes;
+        }
         return loader.load(path);
+    }
+
+    private List<Path> directAndroidArtifacts(Path directory) throws IOException {
+        try (var stream = Files.list(directory)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .filter(this::isAndroidArtifact)
+                    .sorted()
+                    .toList();
+        }
     }
 
     private void clearClassTree() {
@@ -1222,7 +1269,7 @@ public class ByteScryGui extends Application {
 
         String className = classFile.getClassName().replace('/', '.');
         editorTitleLabel.setText(className);
-        editorMetaLabel.setText(isAndroidArtifactLoaded() ? "JADX source" : classFile.getBytes().length + " bytes");
+        editorMetaLabel.setText(isAndroidArtifactTarget(classFile) ? "JADX source" : classFile.getBytes().length + " bytes");
         selectedClassLabel.setText(className);
         sourceArea.setText("// Source is pending for " + className + ".");
         setCompareText("// Primary source is pending for " + className + ".",
@@ -1242,7 +1289,7 @@ public class ByteScryGui extends Application {
     }
 
     private String bytecodeText(ClassFile classFile) {
-        if (isAndroidArtifactLoaded() || classFile.getClassName().startsWith("artifact/")) {
+        if (isAndroidArtifactTarget(classFile) || classFile.getClassName().startsWith("artifact/")) {
             return "// Bytecode view is not available for Android artifacts.\n"
                     + "// Use the Source tab; APK/DEX inputs are handled by JADX.";
         }
@@ -1258,10 +1305,10 @@ public class ByteScryGui extends Application {
         if (engine == null || engine.isBlank()) {
             engine = ENGINE_AUTO;
         }
-        loadSource(selectedClassFile, engine, sourceArea);
+        loadSource(selectedClassFile, engine, sourceArea, workspaceGeneration);
     }
 
-    private void loadSource(ClassFile target, String engineName, TextArea targetArea) {
+    private void loadSource(ClassFile target, String engineName, TextArea targetArea, long generation) {
         if (target == null) {
             setStatus("No class selected");
             return;
@@ -1281,9 +1328,9 @@ public class ByteScryGui extends Application {
         setBusy(true);
         setStatus("Decompiling " + target.getClassName() + "...");
 
-        CompletableFuture.supplyAsync(() -> decompileWithEngine(target, requestedEngine))
+        CompletableFuture.supplyAsync(() -> decompileWithEngine(target, requestedEngine, currentOptions(target), generation))
                 .thenAccept(result -> Platform.runLater(() -> {
-            if (target != selectedClassFile) {
+            if (!isCurrentWorkspace(generation) || target != selectedClassFile) {
                 return;
             }
             cache.put(target.getClassName(), result);
@@ -1291,7 +1338,7 @@ public class ByteScryGui extends Application {
             setBusy(false);
         })).exceptionally(ex -> {
             Platform.runLater(() -> {
-                if (target == selectedClassFile) {
+                if (isCurrentWorkspace(generation) && target == selectedClassFile) {
                     showError("Decompilation error", ex.getMessage());
                     setStatus("Decompilation error");
                     setBusy(false);
@@ -1332,8 +1379,23 @@ public class ByteScryGui extends Application {
     }
 
     private DecompilerOptions currentOptions() {
-        String input = loadedPath == null ? null : loadedPath.toString();
+        return currentOptions(selectedClassFile);
+    }
+
+    private DecompilerOptions currentOptions(ClassFile target) {
+        String input = inputPathFor(target);
+        return optionsForInput(input);
+    }
+
+    private DecompilerOptions optionsForInput(String input) {
         return DEFAULT_OPTIONS.withInputPath(input).withBestEffort(true).withFallbackEnabled(true);
+    }
+
+    private String inputPathFor(ClassFile target) {
+        if (target != null && target.getSource() != null && isAndroidArtifactName(target.getSource())) {
+            return target.getSource();
+        }
+        return loadedPath == null ? null : loadedPath.toString();
     }
 
     private boolean isAndroidArtifactLoaded() {
@@ -1341,33 +1403,52 @@ public class ByteScryGui extends Application {
     }
 
     private boolean isAndroidArtifact(Path path) {
-        String lower = path.toString().toLowerCase();
+        return isAndroidArtifactName(path.toString());
+    }
+
+    private boolean isAndroidArtifactName(String path) {
+        String lower = path.toLowerCase();
         return lower.endsWith(".apk") || lower.endsWith(".dex") || lower.endsWith(".aab")
                 || lower.endsWith(".apks") || lower.endsWith(".apkm") || lower.endsWith(".xapk");
     }
 
+    private boolean isAndroidArtifactTarget(ClassFile classFile) {
+        return classFile != null
+                && ((classFile.getSource() != null && isAndroidArtifactName(classFile.getSource()))
+                || (isAndroidArtifactLoaded() && classFile.getBytes().length == 0));
+    }
+
     private DecompilationResult decompileWithEngine(ClassFile target, String engineName) {
+        return decompileWithEngine(target, engineName, currentOptions(target), workspaceGeneration);
+    }
+
+    private DecompilationResult decompileWithEngine(ClassFile target, String engineName, DecompilerOptions options) {
+        return decompileWithEngine(target, engineName, options, workspaceGeneration);
+    }
+
+    private DecompilationResult decompileWithEngine(ClassFile target, String engineName,
+                                                    DecompilerOptions options, long generation) {
         if (ENGINE_AUTO.equals(engineName)) {
-            if (isAndroidArtifactLoaded()) {
-                DecompilationResult jadx = decompileWithEngine(target, "jadx");
+            if (isAndroidArtifactTarget(target)) {
+                DecompilationResult jadx = decompileWithEngine(target, "jadx", options, generation);
                 engineCache("auto").put(target.getClassName(), jadx);
                 return jadx;
             }
-            DecompilationResult cfr = decompileWithEngine(target, "cfr");
+            DecompilationResult cfr = decompileWithEngine(target, "cfr", options, generation);
             if (!cfr.hasError()) {
                 engineCache("auto").put(target.getClassName(), cfr);
                 return cfr;
             }
-            addDiagnostic(target.getClassName(), "cfr", cfr.getError().getMessage());
+            addDiagnosticIfCurrent(generation, target.getClassName(), "cfr", cfr.getError().getMessage());
             if (DecompilerEngineRegistry.availableEngines().contains("vineflower")) {
-                DecompilationResult vineflower = decompileWithEngine(target, "vineflower");
+                DecompilationResult vineflower = decompileWithEngine(target, "vineflower", options, generation);
                 if (!vineflower.hasError()) {
                     engineCache("auto").put(target.getClassName(), vineflower);
                     return vineflower;
                 }
-                addDiagnostic(target.getClassName(), "vineflower", vineflower.getError().getMessage());
+                addDiagnosticIfCurrent(generation, target.getClassName(), "vineflower", vineflower.getError().getMessage());
             }
-            DecompilationResult simple = decompileWithEngine(target, "simple");
+            DecompilationResult simple = decompileWithEngine(target, "simple", options, generation);
             engineCache("auto").put(target.getClassName(), simple);
             return simple;
         }
@@ -1378,7 +1459,7 @@ public class ByteScryGui extends Application {
         }
 
         DecompilerEngine engine = DecompilerEngineRegistry.get(engineName);
-        DecompilationResult result = engine.decompile(target, currentOptions());
+        DecompilationResult result = engine.decompile(target, options);
         engineCache(result.getEngine()).put(target.getClassName(), result);
         return result;
     }
@@ -1387,31 +1468,34 @@ public class ByteScryGui extends Application {
         if (target == null) {
             return;
         }
+        long generation = workspaceGeneration;
         setCompareText("// Preparing primary source for " + target.getClassName().replace('/', '.') + "...",
                 "// Preparing comparison source for " + target.getClassName().replace('/', '.') + "...");
         setBusy(true);
         CompletableFuture.supplyAsync(() -> {
-            if (isAndroidArtifactLoaded()) {
-                DecompilationResult jadx = decompileWithEngine(target, "jadx");
+            if (isAndroidArtifactTarget(target)) {
+                DecompilationResult jadx = decompileWithEngine(target, "jadx", currentOptions(target), generation);
                 return formatCompare(jadx, DecompilationResult.error(target.getClassName(), "bytecode",
                         new IOException("Bytecode compare is not available for Android artifacts yet")));
             }
-            DecompilationResult primary = decompileWithEngine(target, "cfr");
+            DecompilationResult primary = decompileWithEngine(target, "cfr", currentOptions(target), generation);
             DecompilationResult secondary = DecompilerEngineRegistry.availableEngines().contains("vineflower")
-                    ? decompileWithEngine(target, "vineflower")
-                    : decompileWithEngine(target, "simple");
+                    ? decompileWithEngine(target, "vineflower", currentOptions(target), generation)
+                    : decompileWithEngine(target, "simple", currentOptions(target), generation);
             return formatCompare(primary, secondary);
         }).thenAccept(result -> Platform.runLater(() -> {
-            if (target == selectedClassFile) {
+            if (isCurrentWorkspace(generation) && target == selectedClassFile) {
                 setCompareText(result.left(), result.right());
                 setStatus("Compare view ready for " + target.getClassName());
+                setBusy(false);
             }
-            setBusy(false);
         })).exceptionally(ex -> {
             Platform.runLater(() -> {
-                addDiagnostic(target.getClassName(), "compare", ex.getMessage());
-                setCompareText("/* Compare failed: " + ex.getMessage() + " */", "");
-                setBusy(false);
+                if (isCurrentWorkspace(generation) && target == selectedClassFile) {
+                    addDiagnostic(target.getClassName(), "compare", ex.getMessage());
+                    setCompareText("/* Compare failed: " + ex.getMessage() + " */", "");
+                    setBusy(false);
+                }
             });
             return null;
         });
@@ -1476,7 +1560,7 @@ public class ByteScryGui extends Application {
         if (loadedPath == null) {
             return true;
         }
-        if (isAndroidArtifactLoaded()) {
+        if (selectedClassFile != null ? isAndroidArtifactTarget(selectedClassFile) : isAndroidArtifactLoaded()) {
             return "jadx".equals(engine);
         }
         return !"jadx".equals(engine);
@@ -1492,7 +1576,10 @@ public class ByteScryGui extends Application {
 
     private String recommendedSourceEngine() {
         List<String> engines = availableSourceEngines();
-        if (isAndroidArtifactLoaded() && engines.contains("jadx")) {
+        if (selectedClassFile != null && isAndroidArtifactTarget(selectedClassFile) && engines.contains("jadx")) {
+            return "jadx";
+        }
+        if (selectedClassFile == null && isAndroidArtifactLoaded() && engines.contains("jadx")) {
             return "jadx";
         }
         if (engines.contains("cfr")) {
@@ -1551,6 +1638,20 @@ public class ByteScryGui extends Application {
         }
     }
 
+    private void addDiagnosticIfCurrent(long generation, String className, String engine, String message) {
+        Runnable update = () -> {
+            if (isCurrentWorkspace(generation)) {
+                diagnostics.add("[" + engine + "] " + className + ": " + message);
+                renderDiagnostics();
+            }
+        };
+        if (Platform.isFxApplicationThread()) {
+            update.run();
+        } else {
+            Platform.runLater(update);
+        }
+    }
+
     private void renderDiagnostics() {
         if (diagnosticsArea == null) {
             return;
@@ -1573,19 +1674,24 @@ public class ByteScryGui extends Application {
         }
         Path outputDir = request.outputDir();
         String exportEngine = request.engineName();
+        long generation = workspaceGeneration;
+        Path exportLoadedPath = loadedPath;
         List<ClassFile> classSnapshot = List.copyOf(loadedClassFiles);
-        DecompilerOptions options = currentOptions();
+        DecompilerOptions options = optionsForInput(exportLoadedPath == null ? null : exportLoadedPath.toString());
         setBusy(true);
         exportButton.setDisable(true);
         setStatus("Exporting sources to " + outputDir + " with " + exportEngine + "...");
         CompletableFuture.runAsync(() -> {
             try {
-                if (loadedPath != null && isAndroidArtifact(loadedPath)
+                if (exportLoadedPath != null && isAndroidArtifact(exportLoadedPath)
                         && (ENGINE_AUTO.equals(exportEngine) || "jadx".equals(exportEngine))) {
                     DecompilerEngine engine = DecompilerEngineRegistry.get("jadx");
                     if (engine instanceof ArtifactDecompilerEngine artifactEngine) {
-                        int written = artifactEngine.exportArtifact(loadedPath, outputDir, options);
+                        int written = artifactEngine.exportArtifact(exportLoadedPath, outputDir, options);
                         Platform.runLater(() -> {
+                            if (!isCurrentWorkspace(generation)) {
+                                return;
+                            }
                             setBusy(false);
                             exportButton.setDisable(classSnapshot.isEmpty());
                             setStatus("Exported " + written + " JADX source file(s) to " + outputDir);
@@ -1598,9 +1704,12 @@ public class ByteScryGui extends Application {
                         .toList();
 
                 ExportStats stats = ENGINE_AUTO.equals(exportEngine)
-                        ? exportAutoSources(outputDir, sortedClasses, options)
-                        : exportEngineSources(outputDir, sortedClasses, options, exportEngine);
+                        ? exportAutoSources(outputDir, sortedClasses, options, generation)
+                        : exportEngineSources(outputDir, sortedClasses, options, exportEngine, generation);
                 Platform.runLater(() -> {
+                    if (!isCurrentWorkspace(generation)) {
+                        return;
+                    }
                     setBusy(false);
                     exportButton.setDisable(classSnapshot.isEmpty());
                     setStatus("Exported " + stats.written() + " source file(s) to " + outputDir
@@ -1608,6 +1717,9 @@ public class ByteScryGui extends Application {
                 });
             } catch (Exception e) {
                 Platform.runLater(() -> {
+                    if (!isCurrentWorkspace(generation)) {
+                        return;
+                    }
                     setBusy(false);
                     exportButton.setDisable(classSnapshot.isEmpty());
                     showError("Export error", e.getMessage());
@@ -1698,7 +1810,8 @@ public class ByteScryGui extends Application {
         return recommendedSourceEngine();
     }
 
-    private ExportStats exportAutoSources(Path outputDir, List<ClassFile> classes, DecompilerOptions options) throws IOException {
+    private ExportStats exportAutoSources(Path outputDir, List<ClassFile> classes,
+                                          DecompilerOptions options, long generation) throws IOException {
         int simpleWritten = 0;
         for (ClassFile classFile : classes) {
             DecompilationResult result = DecompilerEngineRegistry.get("simple").decompile(classFile, options);
@@ -1709,7 +1822,7 @@ public class ByteScryGui extends Application {
             }
             if (simpleWritten == classes.size() || simpleWritten % 25 == 0) {
                 int exported = simpleWritten;
-                setStatus("Exported " + exported + "/" + classes.size()
+                setStatusIfCurrent(generation, "Exported " + exported + "/" + classes.size()
                         + " basic source file(s). Enhancing with Auto...");
             }
         }
@@ -1718,7 +1831,7 @@ public class ByteScryGui extends Application {
         int processed = 0;
         for (ClassFile classFile : classes) {
             processed++;
-            DecompilationResult result = decompileWithEngine(classFile, ENGINE_AUTO);
+            DecompilationResult result = decompileWithEngine(classFile, ENGINE_AUTO, options, generation);
             if (!result.hasError()) {
                 writeSourceFile(outputDir, classFile, result);
                 enhanced++;
@@ -1726,7 +1839,7 @@ public class ByteScryGui extends Application {
             if (processed == classes.size() || processed % 10 == 0) {
                 int current = processed;
                 int enhancedCount = enhanced;
-                setStatus("Auto enhanced " + enhancedCount + "/" + classes.size()
+                setStatusIfCurrent(generation, "Auto enhanced " + enhancedCount + "/" + classes.size()
                         + " source file(s), processed " + current + "/" + classes.size());
             }
         }
@@ -1734,17 +1847,18 @@ public class ByteScryGui extends Application {
     }
 
     private ExportStats exportEngineSources(Path outputDir, List<ClassFile> classes,
-                                            DecompilerOptions options, String engineName) throws IOException {
+                                            DecompilerOptions options, String engineName,
+                                            long generation) throws IOException {
         int written = 0;
         int processed = 0;
         for (ClassFile classFile : classes) {
             processed++;
-            DecompilationResult result = decompileWithEngine(classFile, engineName);
+            DecompilationResult result = decompileWithEngine(classFile, engineName, options, generation);
             if (!result.hasError()) {
                 writeSourceFile(outputDir, classFile, result);
                 written++;
             } else if (!"simple".equals(engineName)) {
-                addDiagnostic(classFile.getClassName(), engineName, result.getError().getMessage());
+                addDiagnosticIfCurrent(generation, classFile.getClassName(), engineName, result.getError().getMessage());
                 DecompilationResult fallback = DecompilerEngineRegistry.get("simple").decompile(classFile, options);
                 if (!fallback.hasError()) {
                     engineCache("simple").put(classFile.getClassName(), fallback);
@@ -1755,7 +1869,7 @@ public class ByteScryGui extends Application {
             if (processed == classes.size() || processed % 10 == 0) {
                 int current = processed;
                 int exported = written;
-                setStatus("Exported " + exported + "/" + classes.size()
+                setStatusIfCurrent(generation, "Exported " + exported + "/" + classes.size()
                         + " source file(s), processed " + current + "/" + classes.size());
             }
         }
@@ -1966,6 +2080,19 @@ public class ByteScryGui extends Application {
 
     private void setStatus(String message) {
         Runnable update = () -> statusLabel.setText(message);
+        if (Platform.isFxApplicationThread()) {
+            update.run();
+        } else {
+            Platform.runLater(update);
+        }
+    }
+
+    private void setStatusIfCurrent(long generation, String message) {
+        Runnable update = () -> {
+            if (isCurrentWorkspace(generation)) {
+                statusLabel.setText(message);
+            }
+        };
         if (Platform.isFxApplicationThread()) {
             update.run();
         } else {

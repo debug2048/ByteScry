@@ -4,6 +4,7 @@ import com.github.bytescry.api.DecompilerEngine;
 import com.github.bytescry.model.ClassFile;
 import com.github.bytescry.model.DecompilationResult;
 import com.github.bytescry.model.DecompilerOptions;
+import com.github.bytescry.util.JavaRuntime;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,6 +29,7 @@ public class VineflowerEngine implements DecompilerEngine {
 
     public static final String NAME = "vineflower";
     private static final long TIMEOUT_SECONDS = 90;
+    private static final int MAX_CACHE_ENTRIES = 8;
     private static final Map<String, Map<String, String>> SOURCE_CACHE = new ConcurrentHashMap<>();
 
     @Override
@@ -118,7 +120,7 @@ public class VineflowerEngine implements DecompilerEngine {
         Path outputDir = Files.createTempDirectory("bytescry-vineflower-out-");
         try {
             List<String> args = new ArrayList<>();
-            args.add("java");
+            args.add(JavaRuntime.javaExecutable());
             args.add("-cp");
             args.add(findVineflowerJar());
             args.add("org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler");
@@ -140,7 +142,7 @@ public class VineflowerEngine implements DecompilerEngine {
                 throw new IOException("Vineflower exited with code " + exitCode + ": " + output);
             }
             Map<String, String> sources = readAllOutputs(outputDir);
-            SOURCE_CACHE.put(cacheKey, sources);
+            putCachedSources(cacheKey, sources);
             return sources;
         } finally {
             deleteQuietly(outputDir);
@@ -225,6 +227,17 @@ public class VineflowerEngine implements DecompilerEngine {
         long modified = Files.exists(input) ? Files.getLastModifiedTime(input).toMillis() : 0;
         long size = Files.isRegularFile(input) ? Files.size(input) : 0;
         return input.toAbsolutePath().normalize() + "|" + modified + "|" + size + "|" + options.getInputPath();
+    }
+
+    private void putCachedSources(String cacheKey, Map<String, String> sources) {
+        while (SOURCE_CACHE.size() >= MAX_CACHE_ENTRIES && !SOURCE_CACHE.containsKey(cacheKey)) {
+            String firstKey = SOURCE_CACHE.keySet().stream().findFirst().orElse(null);
+            if (firstKey == null) {
+                break;
+            }
+            SOURCE_CACHE.remove(firstKey);
+        }
+        SOURCE_CACHE.put(cacheKey, sources);
     }
 
     private String findVineflowerJar() throws IOException {

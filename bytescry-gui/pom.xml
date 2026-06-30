@@ -186,7 +186,7 @@
                                 <argument>-OutputExe</argument>
                                 <argument>${project.build.directory}/bytescry.exe</argument>
                                 <argument>-SourceFile</argument>
-                                <argument>${project.basedir}/src/main/windows/SingleExeLauncher.cs</argument>
+                                <argument>${project.basedir}/src/main/windows/SingleExeLauncher.cpp</argument>
                                 <argument>-IconFile</argument>
                                 <argument>${project.build.directory}/generated-windows-icon/bytescry.ico</argument>
                             </arguments>

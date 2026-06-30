@@ -1,5 +1,6 @@
 package com.github.bytescry.cli;
 
+import com.github.bytescry.api.ArtifactDecompilerEngine;
 import com.github.bytescry.api.DecompilerEngine;
 import com.github.bytescry.api.DecompilerEngineRegistry;
 import com.github.bytescry.bytecode.BytecodePrinter;
@@ -50,7 +51,20 @@ public class ByteScryCli implements Callable<Integer> {
         try {
             DecompilerEngine decompiler = DecompilerEngineRegistry.get(engine);
             DecompilerOptions options = new DecompilerOptions(null, printBytecode,
-                    output != null ? output.toString() : null);
+                    output != null ? output.toString() : null)
+                    .withInputPath(input.toString())
+                    .withBestEffort(true)
+                    .withFallbackEnabled(true);
+
+            if (decompiler instanceof ArtifactDecompilerEngine artifactDecompiler
+                    && artifactDecompiler.supportsArtifact(input)) {
+                if (output != null) {
+                    int written = artifactDecompiler.exportArtifact(input, output, options);
+                    System.out.println("Exported " + written + " source file(s) to " + output.toAbsolutePath());
+                    return 0;
+                }
+                return printArtifactToStdout(artifactDecompiler, options);
+            }
 
             ClassFileLoader loader = new ClassFileLoader();
             List<ClassFile> classFiles = loader.load(input);
@@ -107,6 +121,26 @@ public class ByteScryCli implements Callable<Integer> {
         Path file = outputDir.resolve(ClassNameUtils.internalNameToJavaPath(result.getClassName()));
         Files.createDirectories(file.getParent());
         Files.writeString(file, result.getSourceCode(), StandardCharsets.UTF_8);
+    }
+
+    private Integer printArtifactToStdout(ArtifactDecompilerEngine decompiler, DecompilerOptions options)
+            throws IOException, InterruptedException {
+        List<ClassFile> classFiles = decompiler.loadArtifactClasses(input, options);
+        if (classFiles.isEmpty()) {
+            System.err.println("No source files produced by " + engine + " for " + input);
+            return 1;
+        }
+        for (ClassFile classFile : classFiles) {
+            DecompilationResult result = decompiler.decompile(classFile, options);
+            if (result.hasError()) {
+                System.err.println("Failed to decompile " + result.getClassName() + ": " + result.getError().getMessage());
+                continue;
+            }
+            System.out.println("// === " + result.getClassName() + " (engine=" + result.getEngine()
+                    + ", " + result.getElapsedMillis() + "ms) ===");
+            System.out.println(result.getSourceCode());
+        }
+        return 0;
     }
 
     private ClassFile findClassFile(List<ClassFile> classFiles, String className) {

@@ -4,6 +4,7 @@ import com.github.bytescry.api.ArtifactDecompilerEngine;
 import com.github.bytescry.model.ClassFile;
 import com.github.bytescry.model.DecompilationResult;
 import com.github.bytescry.model.DecompilerOptions;
+import com.github.bytescry.util.JavaRuntime;
 
 import java.io.File;
 import java.io.IOException;
@@ -25,6 +26,7 @@ public class JadxEngine implements ArtifactDecompilerEngine {
 
     public static final String NAME = "jadx";
     private static final long TIMEOUT_SECONDS = 180;
+    private static final int MAX_CACHE_ENTRIES = 4;
     private static final Map<String, Map<String, String>> SOURCE_CACHE = new ConcurrentHashMap<>();
 
     @Override
@@ -88,7 +90,7 @@ public class JadxEngine implements ArtifactDecompilerEngine {
         try {
             runJadx(input, outputDir);
             Map<String, String> sources = readAllOutputs(outputDir);
-            SOURCE_CACHE.put(cacheKey, sources);
+            putCachedSources(cacheKey, sources);
             return sources;
         } finally {
             deleteQuietly(outputDir);
@@ -99,7 +101,7 @@ public class JadxEngine implements ArtifactDecompilerEngine {
         Files.createDirectories(outputDir);
         Path logFile = Files.createTempFile("bytescry-jadx-", ".log");
         ProcessBuilder pb = new ProcessBuilder(
-                "java",
+                JavaRuntime.javaExecutable(),
                 "-cp",
                 System.getProperty("java.class.path"),
                 "jadx.cli.JadxCLI",
@@ -147,15 +149,15 @@ public class JadxEngine implements ArtifactDecompilerEngine {
     }
 
     private Path resolveInput(ClassFile classFile, DecompilerOptions options) {
-        if (options.getInputPath() != null) {
-            Path input = Path.of(options.getInputPath());
-            if (Files.exists(input)) {
+        if (classFile.getSource() != null) {
+            Path input = Path.of(classFile.getSource());
+            if (Files.exists(input) && supportsArtifact(input)) {
                 return input;
             }
         }
-        if (classFile.getSource() != null) {
-            Path input = Path.of(classFile.getSource());
-            if (Files.exists(input)) {
+        if (options.getInputPath() != null) {
+            Path input = Path.of(options.getInputPath());
+            if (Files.exists(input) && supportsArtifact(input)) {
                 return input;
             }
         }
@@ -166,6 +168,17 @@ public class JadxEngine implements ArtifactDecompilerEngine {
         long modified = Files.exists(input) ? Files.getLastModifiedTime(input).toMillis() : 0;
         long size = Files.isRegularFile(input) ? Files.size(input) : 0;
         return input.toAbsolutePath().normalize() + "|" + modified + "|" + size;
+    }
+
+    private void putCachedSources(String cacheKey, Map<String, String> sources) {
+        while (SOURCE_CACHE.size() >= MAX_CACHE_ENTRIES && !SOURCE_CACHE.containsKey(cacheKey)) {
+            String firstKey = SOURCE_CACHE.keySet().stream().findFirst().orElse(null);
+            if (firstKey == null) {
+                break;
+            }
+            SOURCE_CACHE.remove(firstKey);
+        }
+        SOURCE_CACHE.put(cacheKey, sources);
     }
 
     private Map<String, String> readAllOutputs(Path outputDir) throws IOException {

@@ -7,8 +7,9 @@ This repository builds the `bytescry-*` artifacts for the ByteScry application.
 - JDK 17+
 - Apache Maven 3.8+
 - Internet access for Maven dependencies
-- Windows release builds require a JDK with `jlink` and `jmods`. They produce a
-  Windows runtime image and should be run on Windows.
+- Windows release builds require a JDK with `jlink` / `jmods` and Visual Studio
+  Build Tools with the MSVC C++ toolchain. They produce a Windows runtime image
+  and should be run on Windows.
 
 Check the active JDK:
 
@@ -73,9 +74,10 @@ Primary Windows asset:
 bytescry-gui/target/bytescry.exe
 ```
 
-The Windows GUI exe is a single self-extracting executable. It embeds the
+The Windows GUI exe is a native self-extracting executable. It embeds the
 portable GUI zip and extracts it to the user cache on first launch, so users can
-move and run the exe by itself.
+move and run the exe by itself. Users do not need to install Java or the .NET
+Framework.
 
 The build also creates an internal portable zip:
 
@@ -141,10 +143,17 @@ unzip bytescry-gui-1.0.0-linux-x64.zip
 Recommended GitHub Release uploads:
 
 ```text
-bytescry-gui-1.0.0-windows-x64.zip
+bytescry.exe
 bytescry-cli-1.0.0-linux-x64.tar.gz
 bytescry-gui-1.0.0-linux-x64.zip
+LICENSE
+THIRD_PARTY_NOTICES.md
+SHA256SUMS-*.txt
 ```
+
+Tag builds (`v*`) are also covered by GitHub Actions. The workflow runs tests,
+builds Windows and Linux release artifacts, generates SHA-256 checksum files,
+and publishes the assets to the GitHub Release.
 
 ## Generic GUI Packaging
 
@@ -233,7 +242,8 @@ Important versions are defined in the parent `pom.xml`:
 - JavaFX 17.0.2
 - picocli 4.7.6
 - JUnit 5.10.2
-- Launch4j Maven Plugin 2.5.3 for the Windows `.exe` launcher
+- Launch4j Maven Plugin 2.5.3 for the internal Windows GUI launcher
+- MSVC Build Tools for the outer native single-file Windows launcher
 
 Dependencies are resolved from Maven repositories. To upgrade CFR or another
 engine dependency, update the version property in the parent POM and rebuild.

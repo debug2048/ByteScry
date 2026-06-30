@@ -21,14 +21,14 @@ class search, and source export.
 | `.class` | Yes | Yes | CFR, Vineflower, Simple, Bytecode |
 | `.jar` | Yes | Yes | CFR default |
 | Directory | Yes | Yes | Recursively reads `.class`; GUI also reads direct child `.jar` / Android artifacts |
-| `.apk`, `.dex`, `.aab`, `.apks`, `.apkm`, `.xapk` | Yes | Limited | GUI uses JADX by default |
+| `.apk`, `.dex`, `.aab`, `.apks`, `.apkm`, `.xapk` | Yes | Yes | GUI uses JADX by default; CLI uses `--engine jadx` |
 
 ## Download
 
 Recommended GitHub Release assets:
 
 ```text
-bytescry.exe                            # Windows single-file GUI, no Java install required
+bytescry.exe                            # Windows single-file GUI, no Java/.NET install required
 bytescry-cli-<version>-linux-x64.tar.gz # Linux CLI
 bytescry-gui-<version>-linux-x64.zip    # Linux GUI
 ```
