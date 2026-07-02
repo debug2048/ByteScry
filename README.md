@@ -14,6 +14,7 @@ class search, and source export.
 - Collapsed package tree, drag-and-drop open, in-class search, and line numbers.
 - Side-by-side engine compare, optional Bytecode and Diagnostics views.
 - Source export with engine selection.
+- Offline analysis reports for permissions, endpoints, risky APIs, and strings.
 - Android artifact indexing through JADX for APK/DEX-oriented workflows.
 
 ## Supported Inputs

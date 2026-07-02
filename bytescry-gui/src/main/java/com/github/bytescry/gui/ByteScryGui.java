@@ -8,6 +8,9 @@ import com.github.bytescry.loader.ClassFileLoader;
 import com.github.bytescry.model.ClassFile;
 import com.github.bytescry.model.DecompilationResult;
 import com.github.bytescry.model.DecompilerOptions;
+import com.github.bytescry.report.AnalysisReport;
+import com.github.bytescry.report.ArtifactReportGenerator;
+import com.github.bytescry.report.MarkdownReportRenderer;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -120,6 +123,7 @@ public class ByteScryGui extends Application {
     private ProgressIndicator projectProgressIndicator;
     private Button maximizeButton;
     private Button exportButton;
+    private Button reportButton;
     private TextField searchField;
     private TextField sourceSearchField;
     private ComboBox<String> sourceEngineCombo;
@@ -436,10 +440,16 @@ public class ByteScryGui extends Application {
         exportButton.setDisable(true);
         exportButton.setOnAction(e -> exportSources());
 
+        reportButton = new Button("Report");
+        reportButton.getStyleClass().add("command-button");
+        reportButton.setDisable(true);
+        reportButton.setTooltip(new Tooltip("Generate offline analysis report"));
+        reportButton.setOnAction(e -> exportAnalysisReport());
+
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox commandBar = new HBox(12, titleBox, openButton, spacer, exportButton);
+        HBox commandBar = new HBox(12, titleBox, openButton, spacer, reportButton, exportButton);
         commandBar.getStyleClass().add("command-bar");
         commandBar.setAlignment(Pos.CENTER_LEFT);
         return commandBar;
@@ -919,6 +929,7 @@ public class ByteScryGui extends Application {
         bytecodeArea.setText(EMPTY_BYTECODE);
         diagnosticsArea.setText(EMPTY_DIAGNOSTICS);
         exportButton.setDisable(true);
+        reportButton.setDisable(true);
         searchField.clear();
         sourceSearchField.clear();
         refreshSourceEngineChoices();
@@ -942,6 +953,7 @@ public class ByteScryGui extends Application {
                     setProjectControlsDisabled(false);
                     setBusy(false);
                     exportButton.setDisable(loadedClassFiles.isEmpty());
+                    reportButton.setDisable(false);
                     selectInitialClass();
                 });
             } catch (Exception e) {
@@ -956,6 +968,7 @@ public class ByteScryGui extends Application {
                     setProjectLoading(false);
                     setProjectControlsDisabled(false);
                     setBusy(false);
+                    reportButton.setDisable(true);
                     showError("Load error", e.getMessage());
                 });
             }
@@ -1661,6 +1674,73 @@ public class ByteScryGui extends Application {
         } else {
             diagnosticsArea.setText(String.join("\n", diagnostics));
         }
+    }
+
+    private void exportAnalysisReport() {
+        if (loadedPath == null) {
+            setStatus("No workspace to analyze");
+            return;
+        }
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Save analysis report");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Markdown report", "*.md"));
+        chooser.setInitialFileName(defaultReportFileName());
+        Path initialDirectory = initialOpenDirectory();
+        if (Files.isDirectory(initialDirectory)) {
+            chooser.setInitialDirectory(initialDirectory.toFile());
+        }
+        File selected = chooser.showSaveDialog(null);
+        if (selected == null) {
+            return;
+        }
+
+        Path outputFile = selected.toPath();
+        Path reportLoadedPath = loadedPath;
+        List<ClassFile> classSnapshot = loadedClassFiles == null ? List.of() : List.copyOf(loadedClassFiles);
+        long generation = workspaceGeneration;
+        setBusy(true);
+        reportButton.setDisable(true);
+        setStatus("Generating analysis report...");
+        CompletableFuture.runAsync(() -> {
+            try {
+                AnalysisReport report = new ArtifactReportGenerator().generate(reportLoadedPath, classSnapshot);
+                Path parent = outputFile.toAbsolutePath().getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+                Files.writeString(outputFile, new MarkdownReportRenderer().render(report), StandardCharsets.UTF_8);
+                Platform.runLater(() -> {
+                    if (!isCurrentWorkspace(generation)) {
+                        return;
+                    }
+                    setBusy(false);
+                    reportButton.setDisable(false);
+                    setStatus("Wrote analysis report to " + outputFile);
+                });
+            } catch (Exception e) {
+                Platform.runLater(() -> {
+                    if (!isCurrentWorkspace(generation)) {
+                        return;
+                    }
+                    setBusy(false);
+                    reportButton.setDisable(false);
+                    showError("Report error", e.getMessage());
+                    setStatus("Report failed: " + e.getMessage());
+                });
+            }
+        });
+    }
+
+    private String defaultReportFileName() {
+        String base = loadedPath == null || loadedPath.getFileName() == null
+                ? "bytescry-analysis"
+                : loadedPath.getFileName().toString();
+        int dot = base.lastIndexOf('.');
+        if (dot > 0) {
+            base = base.substring(0, dot);
+        }
+        base = base.replaceAll("[^A-Za-z0-9._-]", "_");
+        return base.isBlank() ? "bytescry-analysis.md" : base + "-analysis.md";
     }
 
     private void exportSources() {

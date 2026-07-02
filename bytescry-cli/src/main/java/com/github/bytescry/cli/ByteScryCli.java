@@ -8,6 +8,9 @@ import com.github.bytescry.loader.ClassFileLoader;
 import com.github.bytescry.model.ClassFile;
 import com.github.bytescry.model.DecompilationResult;
 import com.github.bytescry.model.DecompilerOptions;
+import com.github.bytescry.report.AnalysisReport;
+import com.github.bytescry.report.ArtifactReportGenerator;
+import com.github.bytescry.report.MarkdownReportRenderer;
 import com.github.bytescry.util.ClassNameUtils;
 import picocli.CommandLine;
 
@@ -41,6 +44,12 @@ public class ByteScryCli implements Callable<Integer> {
     @CommandLine.Option(names = {"-b", "--bytecode"}, description = "Print bytecode alongside decompiled source.")
     private boolean printBytecode;
 
+    @CommandLine.Option(names = {"--report"}, description = "Write an offline Markdown analysis report to this file.")
+    private Path reportOutput;
+
+    @CommandLine.Option(names = {"--report-only"}, description = "Generate the analysis report without decompiling sources.")
+    private boolean reportOnly;
+
     public static void main(String[] args) {
         int exitCode = new CommandLine(new ByteScryCli()).execute(args);
         System.exit(exitCode);
@@ -49,6 +58,10 @@ public class ByteScryCli implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
+            if (reportOnly && reportOutput == null) {
+                System.err.println("Error: --report-only requires --report <file>");
+                return 1;
+            }
             DecompilerEngine decompiler = DecompilerEngineRegistry.get(engine);
             DecompilerOptions options = new DecompilerOptions(null, printBytecode,
                     output != null ? output.toString() : null)
@@ -56,8 +69,16 @@ public class ByteScryCli implements Callable<Integer> {
                     .withBestEffort(true)
                     .withFallbackEnabled(true);
 
+            if (reportOutput != null && reportOnly) {
+                writeReport(new ArtifactReportGenerator().generate(input), reportOutput);
+                return 0;
+            }
+
             if (decompiler instanceof ArtifactDecompilerEngine artifactDecompiler
                     && artifactDecompiler.supportsArtifact(input)) {
+                if (reportOutput != null) {
+                    writeReport(new ArtifactReportGenerator().generate(input), reportOutput);
+                }
                 if (output != null) {
                     int written = artifactDecompiler.exportArtifact(input, output, options);
                     System.out.println("Exported " + written + " source file(s) to " + output.toAbsolutePath());
@@ -72,6 +93,9 @@ public class ByteScryCli implements Callable<Integer> {
             if (classFiles.isEmpty()) {
                 System.err.println("No .class files found in " + input);
                 return 1;
+            }
+            if (reportOutput != null) {
+                writeReport(new ArtifactReportGenerator().generate(input, classFiles), reportOutput);
             }
 
             List<DecompilationResult> results = decompiler.decompile(classFiles, options);
@@ -121,6 +145,15 @@ public class ByteScryCli implements Callable<Integer> {
         Path file = outputDir.resolve(ClassNameUtils.internalNameToJavaPath(result.getClassName()));
         Files.createDirectories(file.getParent());
         Files.writeString(file, result.getSourceCode(), StandardCharsets.UTF_8);
+    }
+
+    private void writeReport(AnalysisReport report, Path outputFile) throws IOException {
+        Path parent = outputFile.toAbsolutePath().getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.writeString(outputFile, new MarkdownReportRenderer().render(report), StandardCharsets.UTF_8);
+        System.out.println("Wrote analysis report to " + outputFile.toAbsolutePath());
     }
 
     private Integer printArtifactToStdout(ArtifactDecompilerEngine decompiler, DecompilerOptions options)

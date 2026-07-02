@@ -159,6 +159,21 @@ out/
             └── Worker.java
 ```
 
+## Analysis Reports
+
+Click `Report` to save an offline Markdown analysis report for the loaded
+artifact. The report is generated locally and does not call an AI model or
+external service.
+
+The deterministic scanner currently reports:
+
+- Package, class, method, and field counts
+- Android permission strings
+- URLs and domains
+- Network, crypto, reflection, process execution, dynamic loading, native load,
+  and selected Android sensitive API references
+- Suspicious environment and instrumentation strings
+
 ## CLI
 
 The CLI is best for Java `.class`, `.jar`, and class directory workflows.
@@ -183,6 +198,8 @@ Options:
   -e, --engine=<engine>     cfr, vineflower, simple, or jadx
   -o, --output=<dir>        Output directory. If omitted, prints to stdout
   -b, --bytecode            Print bytecode alongside decompiled source
+      --report=<file>       Write an offline Markdown analysis report
+      --report-only         Generate only the report, without decompiling
   -h, --help                Show help
   -V, --version             Show version
 ```
@@ -198,6 +215,9 @@ bin/bytescry --engine vineflower --output out path/to/app.jar
 
 # Inspect Simple output and bytecode
 bin/bytescry --engine simple --bytecode path/to/Hello.class
+
+# Generate an offline analysis report
+bin/bytescry --report report.md --report-only path/to/app.jar
 ```
 
 For Android artifacts, the GUI is still the recommended workflow because it
