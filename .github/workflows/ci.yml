@@ -125,4 +125,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body: |
+            ByteScry ${{ github.ref_name }} release assets.
