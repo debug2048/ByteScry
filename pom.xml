@@ -50,6 +50,7 @@
         <javafx.classifier>win</javafx.classifier>
         <app.displayName>ByteScry</app.displayName>
         <app.displayVersion>1.0.0</app.displayVersion>
+        <watermark.id>local-${project.version}</watermark.id>
         <release.platform>portable</release.platform>
         <cli.assembly.descriptor>src/main/assembly/assembly.xml</cli.assembly.descriptor>
         <cli.assembly.skip>false</cli.assembly.skip>

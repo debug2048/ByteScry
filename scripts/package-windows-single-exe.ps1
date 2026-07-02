@@ -8,7 +8,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $SourceFile,
 
-    [string] $IconFile
+    [string] $IconFile,
+
+    [string] $WatermarkId = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +28,32 @@ $objectFile = Join-Path $outputDir 'bytescry-single-launcher.obj'
 $sourceExtension = [IO.Path]::GetExtension($sourcePath).ToLowerInvariant()
 if ($sourceExtension -ne '.cpp') {
     throw "Windows single-file launcher source must be a native C++ file: $sourcePath"
+}
+
+function New-WatermarkBytes {
+    param(
+        [string] $Id
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Id)) {
+        return ,[byte[]]::new(0)
+    }
+
+    $watermark = [ordered]@{
+        product = 'ByteScry'
+        kind = 'windows-single-exe'
+        id = $Id
+        builtAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+    }
+    $payloadBytes = [Text.Encoding]::UTF8.GetBytes(($watermark | ConvertTo-Json -Compress))
+    $markerBytes = [Text.Encoding]::ASCII.GetBytes('BYTE-SCRY-WATERMARK-V1')
+    $lengthBytes = [BitConverter]::GetBytes([Int32] $payloadBytes.Length)
+
+    $bytes = [byte[]]::new($markerBytes.Length + $lengthBytes.Length + $payloadBytes.Length)
+    [Array]::Copy($markerBytes, 0, $bytes, 0, $markerBytes.Length)
+    [Array]::Copy($lengthBytes, 0, $bytes, $markerBytes.Length, $lengthBytes.Length)
+    [Array]::Copy($payloadBytes, 0, $bytes, $markerBytes.Length + $lengthBytes.Length, $payloadBytes.Length)
+    return ,$bytes
 }
 
 $iconPath = $null
@@ -81,11 +109,15 @@ if ($LASTEXITCODE -ne 0) {
 Copy-Item -LiteralPath $stubExe -Destination $outputPath -Force
 
 $marker = [Text.Encoding]::ASCII.GetBytes('BYTE-SCRY-SFX-ZIP-V1')
+$watermarkBytes = New-WatermarkBytes -Id $WatermarkId
 $zipBytes = [IO.File]::ReadAllBytes($inputZipPath)
 $lengthBytes = [BitConverter]::GetBytes([Int64] $zipBytes.Length)
 
 $stream = [IO.File]::Open($outputPath, [IO.FileMode]::Append, [IO.FileAccess]::Write)
 try {
+    if ($watermarkBytes.Length -gt 0) {
+        $stream.Write($watermarkBytes, 0, $watermarkBytes.Length)
+    }
     $stream.Write($zipBytes, 0, $zipBytes.Length)
     $stream.Write($lengthBytes, 0, $lengthBytes.Length)
     $stream.Write($marker, 0, $marker.Length)

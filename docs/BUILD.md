@@ -68,6 +68,16 @@ Windows release:
 mvn -Prelease-windows clean package
 ```
 
+Add a traceable hidden build watermark to the Windows single-file exe and GUI
+metadata by passing `watermark.id`:
+
+```bash
+mvn -Prelease-windows -Dwatermark.id=github-v1.0.0-<commit> clean package
+```
+
+GitHub tag builds set this value automatically from the tag, commit SHA, and
+workflow run id.
+
 Primary Windows asset:
 
 ```text

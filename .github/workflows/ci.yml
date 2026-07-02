@@ -46,7 +46,7 @@ jobs:
           cache: maven
 
       - name: Build Linux artifacts
-        run: mvn -B -Prelease-linux clean package
+        run: mvn -B -Prelease-linux -Dwatermark.id=github-${{ github.ref_name }}-${{ github.sha }}-${{ github.run_id }} clean package
 
       - name: Collect Linux artifacts
         run: |
@@ -80,7 +80,7 @@ jobs:
 
       - name: Build Windows artifact
         shell: pwsh
-        run: mvn -B -Prelease-windows clean package
+        run: mvn -B -Prelease-windows "-Dwatermark.id=github-${{ github.ref_name }}-${{ github.sha }}-${{ github.run_id }}" clean package
 
       - name: Collect Windows artifact
         shell: pwsh

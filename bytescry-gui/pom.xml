@@ -189,6 +189,8 @@
                                 <argument>${project.basedir}/src/main/windows/SingleExeLauncher.cpp</argument>
                                 <argument>-IconFile</argument>
                                 <argument>${project.build.directory}/generated-windows-icon/bytescry.ico</argument>
+                                <argument>-WatermarkId</argument>
+                                <argument>${watermark.id}</argument>
                             </arguments>
                         </configuration>
                     </execution>
