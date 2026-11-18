@@ -60,17 +60,33 @@ When a directory is selected:
 
 ## Project Pane
 
-The Project pane shows packages and classes.
+The Project pane shows the original directory structure of JAR and Android
+archives. Classes and resources share the same tree. Search matches class
+names and full entry paths.
 
-- Package chains are collapsed into names such as `com.example.service`.
-- Classes are sorted inside each package.
+- Original paths, filename case, and explicit empty directories are preserved.
+- Directories sort before files; entries are sorted by name within each directory.
+- JAR classes retain their actual `.class` paths, including `BOOT-INF/classes/`
+  and `META-INF/versions/` prefixes.
+- Android archives show `AndroidManifest.xml`, `res/`, `assets/`, `lib/`, and
+  their actual DEX entries. Expand a DEX file to browse its decompiled classes.
+- APKS/APKM/XAPK bundles retain each nested APK's path and show its contents
+  beneath that APK entry.
 - During loading, the previous project tree is cleared and the pane is disabled
   so stale classes cannot be selected.
 - A spinner appears in the Project header while loading.
 - Long workspace paths are truncated in the header; hover the path to see the
   full path.
-- Right-click a package to copy the package name.
+- Right-click a directory to copy its path inside the archive.
 - Right-click a class to copy the Java class name or internal JVM name.
+- Select a resource to preview UTF-8 text (up to 256 KiB). Binary, non-UTF-8,
+  and larger files show an informational message and can still be exported.
+- Right-click a resource to copy its path inside the archive.
+
+JARs normally store the contents of `src/main/resources` at the archive root,
+without that source directory name. ByteScry displays the actual archive paths,
+including `META-INF` and Spring Boot's `BOOT-INF` directories. Nested JARs are
+preserved as resource files; their contents are not expanded.
 
 For Spring Boot JARs, loader classes under `org.springframework.boot.loader`
 may appear because they are physically inside executable Spring Boot archives.
@@ -144,6 +160,16 @@ Behavior:
 - Java inputs can export with `cfr`, `vineflower`, `simple`, or the current
   selected engine.
 - Non-Simple exports can fall back to Simple for individual failed classes.
+- Archive resources are copied byte for byte into `out/resources/`, preserving
+  archive paths such as `application.yml`, `templates/index.html`, and
+  `BOOT-INF/classes/application.properties`. This also applies to CLI `-o`.
+  A JAR containing only resources can be opened and exported.
+- Android resource exports contain the original archive bytes (including binary
+  XML and DEX files). Nested APKs are saved intact, with their resources inside.
+- For a directory containing multiple direct child JARs, each JAR's resources
+  are placed under `out/resources/<jar-filename>/` to avoid name collisions.
+- Resources are copied independently of the decompiler engine. Resource paths
+  that escape the output directory are rejected.
 - Android artifacts export through JADX.
 - JADX can report partial errors. If Java files were produced, ByteScry keeps
   the usable output instead of failing the whole export.

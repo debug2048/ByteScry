@@ -10,11 +10,22 @@ public class ClassFile {
     private final String className;
     private final byte[] bytes;
     private final String source;
+    private final String entryPath;
 
     public ClassFile(String className, byte[] bytes, String source) {
+        this(className, bytes, source, className + ".class");
+    }
+
+    public ClassFile(String className, byte[] bytes, String source, String entryPath) {
         this.className = Objects.requireNonNull(className, "className");
         this.bytes = Objects.requireNonNull(bytes, "bytes").clone();
         this.source = source;
+        this.entryPath = Objects.requireNonNull(entryPath, "entryPath");
+    }
+
+    /** Original archive path, or a source path beneath the containing DEX entry. */
+    public String getEntryPath() {
+        return entryPath;
     }
 
     public String getClassName() {

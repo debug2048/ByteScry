@@ -10,9 +10,10 @@ ByteScry 是一个桌面优先的 Java / Android 反编译工作台。它可以�
 
 - JavaFX 桌面 GUI，带原生风格窗口控制，适配高 DPI。
 - 多引擎支持：CFR、Vineflower、Simple、JADX。
-- 折叠包名树、拖拽打开、类内搜索和行号。
+- 按 JAR / Android 包内原始目录展示文件，支持拖拽打开、类内搜索和行号。
 - 双列引擎对比，可选 Bytecode 和 Diagnostics 视图。
 - 支持按引擎导出源码。
+- 类和资源在同一目录树中展示，支持资源搜索和 UTF-8 文本预览；导出时保留原始资源。
 - 离线分析报告，扫描权限、网络端点、高风险 API 和可疑字符串。
 - Android artifact 通过 JADX 建立源码索引，适合 APK / DEX 查看流程。
 
@@ -72,6 +73,13 @@ bytescry-gui/target/bytescry-gui-1.0.0-linux-x64.zip
 ```
 
 ## 文档
+
+左侧按包内真实路径展示类和资源，保留 `META-INF/`、`BOOT-INF/`、`res/`、`assets/`
+等目录和空目录。Android 类挂在所属 `classes*.dex` 文件下展开；APKS 等分包格式也保留
+内嵌 APK 的路径。`src/main/resources` 的内容在打包后通常位于 JAR 根目录。
+点击 `Export Sources` 或使用 CLI `-o`
+导出时，资源保存到输出目录的 `resources/` 下，并保留 JAR 内的原始路径；Spring Boot
+资源保留 `BOOT-INF/classes/` 前缀。二进制和超过 256 KiB 的文件不显示文本预览，仍会完整导出。
 
 - [使用指南](docs/USAGE.md)
 - [设计说明](docs/DESIGN.md)

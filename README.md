@@ -11,7 +11,8 @@ class search, and source export.
 
 - JavaFX desktop GUI with native window controls and high-DPI friendly layout.
 - Pluggable engines: CFR, Vineflower, Simple, and JADX.
-- Collapsed package tree, drag-and-drop open, in-class search, and line numbers.
+- Original archive directory tree for classes and resources, drag-and-drop open,
+  in-class search, and line numbers.
 - Side-by-side engine compare, optional Bytecode and Diagnostics views.
 - Source export with engine selection.
 - Offline analysis reports for permissions, endpoints, risky APIs, and strings.

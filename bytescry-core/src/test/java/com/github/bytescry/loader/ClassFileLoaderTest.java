@@ -79,6 +79,23 @@ class ClassFileLoaderTest {
         assertThat(loaded.get(0).getClassName()).isEqualTo("com/example/Demo");
     }
 
+    @Test
+    void retainsArchivePathsSeparatelyFromBytecodeNames(@TempDir Path temp) throws Exception {
+        Path jarFile = temp.resolve("boot.jar");
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jarFile))) {
+            for (String name : List.of("BOOT-INF/classes/com/example/Demo.class",
+                    "META-INF/versions/17/com/example/Demo.class")) {
+                output.putNextEntry(new JarEntry(name));
+                output.write(minimalClassBytes("com/example/Demo"));
+                output.closeEntry();
+            }
+        }
+        List<ClassFile> classes = loader.loadJar(jarFile);
+        assertThat(classes).extracting(ClassFile::getClassName).containsExactly("com/example/Demo", "com/example/Demo");
+        assertThat(classes).extracting(ClassFile::getEntryPath).containsExactly(
+                "BOOT-INF/classes/com/example/Demo.class", "META-INF/versions/17/com/example/Demo.class");
+    }
+
     private void createJar(Path jarFile, String internalName) throws Exception {
         try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(jarFile))) {
             JarEntry entry = new JarEntry(internalName + ".class");

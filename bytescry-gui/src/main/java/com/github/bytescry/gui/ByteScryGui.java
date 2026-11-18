@@ -5,9 +5,11 @@ import com.github.bytescry.api.DecompilerEngineRegistry;
 import com.github.bytescry.api.ArtifactDecompilerEngine;
 import com.github.bytescry.bytecode.BytecodePrinter;
 import com.github.bytescry.loader.ClassFileLoader;
+import com.github.bytescry.loader.ArchiveResourceLoader;
 import com.github.bytescry.model.ClassFile;
 import com.github.bytescry.model.DecompilationResult;
 import com.github.bytescry.model.DecompilerOptions;
+import com.github.bytescry.model.ResourceFile;
 import com.github.bytescry.report.AnalysisReport;
 import com.github.bytescry.report.ArtifactReportGenerator;
 import com.github.bytescry.report.MarkdownReportRenderer;
@@ -75,7 +77,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarFile;
@@ -132,6 +133,8 @@ public class ByteScryGui extends Application {
     private CheckMenuItem showDiagnosticsMenuItem;
 
     private List<ClassFile> loadedClassFiles;
+    private List<ResourceFile> loadedResources = List.of();
+    private ResourceFile selectedResource;
     private ClassFile selectedClassFile;
     private Path loadedPath;
     private final Map<String, Map<String, DecompilationResult>> decompilationCaches = new ConcurrentHashMap<>();
@@ -438,6 +441,7 @@ public class ByteScryGui extends Application {
         exportButton = new Button("Export Sources");
         exportButton.getStyleClass().add("command-button");
         exportButton.setDisable(true);
+        exportButton.setTooltip(new Tooltip("Export decompiled sources and archive resources"));
         exportButton.setOnAction(e -> exportSources());
 
         reportButton = new Button("Report");
@@ -478,15 +482,21 @@ public class ByteScryGui extends Application {
                     setTooltip(null);
                     setContextMenu(null);
                 } else {
-                    setText((item.isFolder() ? "pkg  " : "class ") + item.getDisplayName());
-                    setTooltip(new Tooltip(item.getDisplayName()));
+                    setText((item.isFolder() ? "dir  " : item.getResourceFile() != null ? "file " : "class ")
+                            + item.getDisplayName());
+                    setTooltip(new Tooltip(item.getPath()));
                     setContextMenu(createClassTreeContextMenu(item));
                 }
             }
         });
         classTree.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null && !newVal.getValue().isFolder()) {
-                selectClass(newVal.getValue().getClassFile());
+                ClassNode item = newVal.getValue();
+                if (item.getResourceFile() != null) {
+                    selectResource(item.getResourceFile());
+                } else {
+                    selectClass(item.getClassFile());
+                }
             }
         });
 
@@ -519,7 +529,7 @@ public class ByteScryGui extends Application {
 
         searchField = new TextField();
         searchField.getStyleClass().addAll("search-field", "sidebar-search-field");
-        searchField.setPromptText("Search classes");
+        searchField.setPromptText("Search classes and resources");
         searchField.setMaxWidth(Double.MAX_VALUE);
         searchField.textProperty().addListener((obs, oldValue, newValue) -> applyClassFilter(newValue));
         VBox.setMargin(searchField, new Insets(10, 12, 6, 12));
@@ -536,9 +546,13 @@ public class ByteScryGui extends Application {
     private ContextMenu createClassTreeContextMenu(ClassNode item) {
         ContextMenu menu = new ContextMenu();
         if (item.isFolder()) {
-            MenuItem copyPackage = new MenuItem("Copy Package Name");
-            copyPackage.setOnAction(e -> copyToClipboard(packageClipboardValue(item), "Copied package name"));
-            menu.getItems().add(copyPackage);
+            MenuItem copyPath = new MenuItem("Copy Directory Path");
+            copyPath.setOnAction(e -> copyToClipboard(item.getPath(), "Copied directory path"));
+            menu.getItems().add(copyPath);
+        } else if (item.getResourceFile() != null) {
+            MenuItem copyPath = new MenuItem("Copy Resource Path");
+            copyPath.setOnAction(e -> copyToClipboard(item.getResourceFile().relativePath(), "Copied resource path"));
+            menu.getItems().add(copyPath);
         } else if (item.getClassFile() != null) {
             MenuItem copyClass = new MenuItem("Copy Class Name");
             copyClass.setOnAction(e -> copyToClipboard(item.getClassFile().getClassName().replace('/', '.'),
@@ -549,10 +563,6 @@ public class ByteScryGui extends Application {
             menu.getItems().addAll(copyClass, copyInternalName);
         }
         return menu;
-    }
-
-    private String packageClipboardValue(ClassNode item) {
-        return "(default package)".equals(item.getDisplayName()) ? "" : item.getDisplayName();
     }
 
     private void copyToClipboard(String value, String status) {
@@ -911,7 +921,10 @@ public class ByteScryGui extends Application {
         long generation = ++workspaceGeneration;
         loadedPath = path;
         loadedClassFiles = List.of();
+        loadedResources = List.of();
+        selectedResource = null;
         selectedClassFile = null;
+        sourceEngineCombo.setDisable(false);
         sourceEnginePinned = false;
         lastCompareQuery = null;
         lastCompareCursor = 0;
@@ -941,18 +954,22 @@ public class ByteScryGui extends Application {
         CompletableFuture.runAsync(() -> {
             try {
                 List<ClassFile> loaded = loadWorkspaceClasses(path);
+                List<ResourceFile> resources = new ArchiveResourceLoader().load(path);
                 Platform.runLater(() -> {
                     if (!isCurrentWorkspace(generation)) {
                         return;
                     }
                     loadedClassFiles = loaded;
+                    loadedResources = resources;
                     populateClassTree(loadedClassFiles);
-                    loadedCountLabel.setText(loadedClassFiles.size() + " class(es)");
-                    setStatus("Loaded " + loadedClassFiles.size() + " class(es) from " + path);
+                    long resourceCount = loadedResources.stream().filter(resource -> !resource.directory()).count();
+                    String counts = loadedClassFiles.size() + " class(es), " + resourceCount + " resource(s)";
+                    loadedCountLabel.setText(counts);
+                    setStatus("Loaded " + counts + " from " + path);
                     setProjectLoading(false);
                     setProjectControlsDisabled(false);
                     setBusy(false);
-                    exportButton.setDisable(loadedClassFiles.isEmpty());
+                    exportButton.setDisable(loadedClassFiles.isEmpty() && loadedResources.isEmpty());
                     reportButton.setDisable(false);
                     selectInitialClass();
                 });
@@ -995,9 +1012,7 @@ public class ByteScryGui extends Application {
             if (engine instanceof ArtifactDecompilerEngine artifactEngine) {
                 List<ClassFile> artifactClasses = artifactEngine.loadArtifactClasses(path,
                         DEFAULT_OPTIONS.withInputPath(path.toString()).withBestEffort(true).withFallbackEnabled(true));
-                if (!artifactClasses.isEmpty()) {
-                    return artifactClasses;
-                }
+                return artifactClasses;
             }
         }
         ClassFileLoader loader = new ClassFileLoader();
@@ -1057,63 +1072,20 @@ public class ByteScryGui extends Application {
         if (loadedClassFiles == null) {
             return;
         }
-        String normalized = query == null ? "" : query.trim().toLowerCase();
-        if (normalized.isEmpty()) {
-            populateClassTree(loadedClassFiles);
-            return;
-        }
-        List<ClassFile> filtered = loadedClassFiles.stream()
-                .filter(cf -> cf.getClassName().replace('/', '.').toLowerCase().contains(normalized)
-                        || cf.getSimpleName().toLowerCase().contains(normalized))
-                .toList();
-        populateClassTree(filtered);
+        populateClassTree(loadedClassFiles);
     }
 
     private void populateClassTree(List<ClassFile> classFiles) {
-        TreeItem<ClassNode> root = new TreeItem<>(new ClassNode("Classes", null, true));
-        root.setExpanded(true);
-
-        Map<String, List<ClassFile>> classesByPackage = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (ClassFile cf : classFiles) {
-            String packageName = packageNameOf(cf.getClassName());
-            classesByPackage.computeIfAbsent(packageName, ignored -> new ArrayList<>()).add(cf);
-        }
-
-        for (Map.Entry<String, List<ClassFile>> entry : classesByPackage.entrySet()) {
-            TreeItem<ClassNode> packageNode = new TreeItem<>(new ClassNode(packageDisplayName(entry.getKey()), null, true));
-            packageNode.setExpanded(false);
-            entry.getValue().sort((a, b) -> simpleClassName(a.getClassName()).compareToIgnoreCase(simpleClassName(b.getClassName())));
-            for (ClassFile cf : entry.getValue()) {
-                packageNode.getChildren().add(new TreeItem<>(new ClassNode(simpleClassName(cf.getClassName()), cf, false)));
-            }
-            root.getChildren().add(packageNode);
-        }
-
-        classTree.setRoot(root);
+        classTree.setRoot(ProjectTreeBuilder.build(loadedPath, classFiles, loadedResources, searchField.getText()));
         classTree.setShowRoot(false);
-    }
-
-    private String packageNameOf(String internalClassName) {
-        int idx = internalClassName.lastIndexOf('/');
-        if (idx < 0) {
-            return "";
-        }
-        return internalClassName.substring(0, idx).replace('/', '.');
-    }
-
-    private String packageDisplayName(String packageName) {
-        return packageName.isEmpty() ? "(default package)" : packageName;
-    }
-
-    private String simpleClassName(String internalClassName) {
-        int idx = internalClassName.lastIndexOf('/');
-        return idx >= 0 ? internalClassName.substring(idx + 1) : internalClassName;
     }
 
     private void selectFirstClass() {
         TreeItem<ClassNode> firstClass = findFirstClass(classTree.getRoot());
         if (firstClass != null) {
             classTree.getSelectionModel().select(firstClass);
+        } else if (loadedResources.stream().anyMatch(resource -> !resource.directory())) {
+            selectResource(loadedResources.stream().filter(resource -> !resource.directory()).findFirst().orElseThrow());
         } else {
             editorTitleLabel.setText("No class files found");
             editorMetaLabel.setText(loadedPath == null ? "" : loadedPath.toString());
@@ -1265,7 +1237,7 @@ public class ByteScryGui extends Application {
         if (root == null) {
             return null;
         }
-        if (!root.getValue().isFolder()) {
+        if (root.getValue().getClassFile() != null) {
             return root;
         }
         for (TreeItem<ClassNode> child : root.getChildren()) {
@@ -1278,6 +1250,8 @@ public class ByteScryGui extends Application {
     }
 
     private void selectClass(ClassFile classFile) {
+        selectedResource = null;
+        sourceEngineCombo.setDisable(false);
         selectedClassFile = classFile;
 
         String className = classFile.getClassName().replace('/', '.');
@@ -1299,6 +1273,41 @@ public class ByteScryGui extends Application {
         } else {
             editorTabs.getSelectionModel().select(sourceTab);
         }
+    }
+
+    private void selectResource(ResourceFile resource) {
+        selectedClassFile = null;
+        selectedResource = resource;
+        sourceEngineCombo.setDisable(true);
+        editorTitleLabel.setText(resource.relativePath());
+        editorMetaLabel.setText("Resource | " + resource.size() + " bytes");
+        selectedClassLabel.setText(resource.relativePath());
+        sourceArea.setText("Loading resource...");
+        setCompareText("Resource files do not require decompilation.", "Resource files do not require decompilation.");
+        bytecodeArea.setText("Bytecode is only available for class files.");
+        editorTabs.getSelectionModel().select(sourceTab);
+        long generation = workspaceGeneration;
+        setBusy(true);
+        CompletableFuture.runAsync(() -> {
+            try {
+                String preview = new ArchiveResourceLoader().preview(resource);
+                Platform.runLater(() -> {
+                    if (isCurrentWorkspace(generation) && selectedResource == resource) {
+                        sourceArea.setText(preview);
+                        setStatus("Resource: " + resource.relativePath());
+                        setBusy(false);
+                    }
+                });
+            } catch (IOException e) {
+                Platform.runLater(() -> {
+                    if (isCurrentWorkspace(generation) && selectedResource == resource) {
+                        sourceArea.setText("Cannot read resource: " + e.getMessage());
+                        setStatus("Resource preview failed");
+                        setBusy(false);
+                    }
+                });
+            }
+        });
     }
 
     private String bytecodeText(ClassFile classFile) {
@@ -1329,7 +1338,7 @@ public class ByteScryGui extends Application {
         String requestedEngine = normalizeEngineName(engineName);
         String cacheEngine = ENGINE_AUTO.equals(requestedEngine) ? "auto" : requestedEngine;
         Map<String, DecompilationResult> cache = engineCache(cacheEngine);
-        DecompilationResult cached = cache.get(target.getClassName());
+        DecompilationResult cached = cache.get(classCacheKey(target));
         if (cached != null) {
             renderDecompilationResult(target, targetArea, cached, requestedEngine);
             setBusy(false);
@@ -1346,7 +1355,7 @@ public class ByteScryGui extends Application {
             if (!isCurrentWorkspace(generation) || target != selectedClassFile) {
                 return;
             }
-            cache.put(target.getClassName(), result);
+            cache.put(classCacheKey(target), result);
             renderDecompilationResult(target, targetArea, result, requestedEngine);
             setBusy(false);
         })).exceptionally(ex -> {
@@ -1376,7 +1385,7 @@ public class ByteScryGui extends Application {
                 setDisplayedSourceEngine(result.getEngine());
             }
             targetArea.setText(result.getSourceCode());
-            engineCache(result.getEngine()).put(target.getClassName(), result);
+            engineCache(result.getEngine()).put(classCacheKey(target), result);
             if (ENGINE_AUTO.equals(requestedEngine)) {
                 setStatus("Decompiled " + target.getClassName() + " with " + result.getEngine()
                         + " in " + result.getElapsedMillis() + " ms");
@@ -1444,37 +1453,41 @@ public class ByteScryGui extends Application {
         if (ENGINE_AUTO.equals(engineName)) {
             if (isAndroidArtifactTarget(target)) {
                 DecompilationResult jadx = decompileWithEngine(target, "jadx", options, generation);
-                engineCache("auto").put(target.getClassName(), jadx);
+                engineCache("auto").put(classCacheKey(target), jadx);
                 return jadx;
             }
             DecompilationResult cfr = decompileWithEngine(target, "cfr", options, generation);
             if (!cfr.hasError()) {
-                engineCache("auto").put(target.getClassName(), cfr);
+                engineCache("auto").put(classCacheKey(target), cfr);
                 return cfr;
             }
             addDiagnosticIfCurrent(generation, target.getClassName(), "cfr", cfr.getError().getMessage());
             if (DecompilerEngineRegistry.availableEngines().contains("vineflower")) {
                 DecompilationResult vineflower = decompileWithEngine(target, "vineflower", options, generation);
                 if (!vineflower.hasError()) {
-                    engineCache("auto").put(target.getClassName(), vineflower);
+                    engineCache("auto").put(classCacheKey(target), vineflower);
                     return vineflower;
                 }
                 addDiagnosticIfCurrent(generation, target.getClassName(), "vineflower", vineflower.getError().getMessage());
             }
             DecompilationResult simple = decompileWithEngine(target, "simple", options, generation);
-            engineCache("auto").put(target.getClassName(), simple);
+            engineCache("auto").put(classCacheKey(target), simple);
             return simple;
         }
 
-        DecompilationResult cached = engineCache(engineName).get(target.getClassName());
+        DecompilationResult cached = engineCache(engineName).get(classCacheKey(target));
         if (cached != null) {
             return cached;
         }
 
         DecompilerEngine engine = DecompilerEngineRegistry.get(engineName);
         DecompilationResult result = engine.decompile(target, options);
-        engineCache(result.getEngine()).put(target.getClassName(), result);
+        engineCache(result.getEngine()).put(classCacheKey(target), result);
         return result;
+    }
+
+    private String classCacheKey(ClassFile classFile) {
+        return classFile.getSource() + "!" + classFile.getEntryPath();
     }
 
     private void loadCompareSource(ClassFile target) {
@@ -1744,8 +1757,8 @@ public class ByteScryGui extends Application {
     }
 
     private void exportSources() {
-        if (loadedClassFiles == null || loadedClassFiles.isEmpty()) {
-            setStatus("No classes to export");
+        if (loadedClassFiles == null || (loadedClassFiles.isEmpty() && loadedResources.isEmpty())) {
+            setStatus("No classes or resources to export");
             return;
         }
         ExportRequest request = showExportDialog();
@@ -1757,6 +1770,7 @@ public class ByteScryGui extends Application {
         long generation = workspaceGeneration;
         Path exportLoadedPath = loadedPath;
         List<ClassFile> classSnapshot = List.copyOf(loadedClassFiles);
+        List<ResourceFile> resourceSnapshot = List.copyOf(loadedResources);
         DecompilerOptions options = optionsForInput(exportLoadedPath == null ? null : exportLoadedPath.toString());
         setBusy(true);
         exportButton.setDisable(true);
@@ -1768,13 +1782,14 @@ public class ByteScryGui extends Application {
                     DecompilerEngine engine = DecompilerEngineRegistry.get("jadx");
                     if (engine instanceof ArtifactDecompilerEngine artifactEngine) {
                         int written = artifactEngine.exportArtifact(exportLoadedPath, outputDir, options);
+                        int resourcesWritten = new ArchiveResourceLoader().export(resourceSnapshot, outputDir.resolve("resources"));
                         Platform.runLater(() -> {
                             if (!isCurrentWorkspace(generation)) {
                                 return;
                             }
                             setBusy(false);
-                            exportButton.setDisable(classSnapshot.isEmpty());
-                            setStatus("Exported " + written + " JADX source file(s) to " + outputDir);
+                            exportButton.setDisable(classSnapshot.isEmpty() && resourceSnapshot.isEmpty());
+                            setStatus("Exported " + written + " JADX source file(s), " + resourcesWritten + " resource(s) to " + outputDir);
                         });
                         return;
                     }
@@ -1786,13 +1801,14 @@ public class ByteScryGui extends Application {
                 ExportStats stats = ENGINE_AUTO.equals(exportEngine)
                         ? exportAutoSources(outputDir, sortedClasses, options, generation)
                         : exportEngineSources(outputDir, sortedClasses, options, exportEngine, generation);
+                int resourcesWritten = new ArchiveResourceLoader().export(resourceSnapshot, outputDir.resolve("resources"));
                 Platform.runLater(() -> {
                     if (!isCurrentWorkspace(generation)) {
                         return;
                     }
                     setBusy(false);
-                    exportButton.setDisable(classSnapshot.isEmpty());
-                    setStatus("Exported " + stats.written() + " source file(s) to " + outputDir
+                    exportButton.setDisable(classSnapshot.isEmpty() && resourceSnapshot.isEmpty());
+                    setStatus("Exported " + stats.written() + " source file(s), " + resourcesWritten + " resource(s) to " + outputDir
                             + " using " + exportEngine + " (" + stats.enhanced() + " enhanced)");
                 });
             } catch (Exception e) {
@@ -1801,7 +1817,7 @@ public class ByteScryGui extends Application {
                         return;
                     }
                     setBusy(false);
-                    exportButton.setDisable(classSnapshot.isEmpty());
+                    exportButton.setDisable(classSnapshot.isEmpty() && resourceSnapshot.isEmpty());
                     showError("Export error", e.getMessage());
                     setStatus("Export failed: " + e.getMessage());
                 });
@@ -1861,7 +1877,9 @@ public class ByteScryGui extends Application {
         grid.add(engineCombo, 1, 1);
         GridPane.setHgrow(pathField, Priority.ALWAYS);
         GridPane.setHgrow(engineCombo, Priority.ALWAYS);
-        VBox content = new VBox(14, titleLabel, grid);
+        Label resourceNote = new Label("Archive resources are saved under resources/ with their original paths.");
+        resourceNote.setWrapText(true);
+        VBox content = new VBox(14, titleLabel, grid, resourceNote);
         content.getStyleClass().add("export-dialog-content");
         dialog.getDialogPane().setContent(content);
 
@@ -1896,7 +1914,7 @@ public class ByteScryGui extends Application {
         for (ClassFile classFile : classes) {
             DecompilationResult result = DecompilerEngineRegistry.get("simple").decompile(classFile, options);
             if (!result.hasError()) {
-                engineCache("simple").put(classFile.getClassName(), result);
+                engineCache("simple").put(classCacheKey(classFile), result);
                 writeSourceFile(outputDir, classFile, result);
                 simpleWritten++;
             }
@@ -1941,7 +1959,7 @@ public class ByteScryGui extends Application {
                 addDiagnosticIfCurrent(generation, classFile.getClassName(), engineName, result.getError().getMessage());
                 DecompilationResult fallback = DecompilerEngineRegistry.get("simple").decompile(classFile, options);
                 if (!fallback.hasError()) {
-                    engineCache("simple").put(classFile.getClassName(), fallback);
+                    engineCache("simple").put(classCacheKey(classFile), fallback);
                     writeSourceFile(outputDir, classFile, fallback);
                     written++;
                 }

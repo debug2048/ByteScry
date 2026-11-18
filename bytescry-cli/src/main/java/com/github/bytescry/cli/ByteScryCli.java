@@ -5,6 +5,8 @@ import com.github.bytescry.api.DecompilerEngine;
 import com.github.bytescry.api.DecompilerEngineRegistry;
 import com.github.bytescry.bytecode.BytecodePrinter;
 import com.github.bytescry.loader.ClassFileLoader;
+import com.github.bytescry.loader.ArchiveResourceLoader;
+import com.github.bytescry.model.ResourceFile;
 import com.github.bytescry.model.ClassFile;
 import com.github.bytescry.model.DecompilationResult;
 import com.github.bytescry.model.DecompilerOptions;
@@ -38,7 +40,7 @@ public class ByteScryCli implements Callable<Integer> {
     @CommandLine.Option(names = {"-e", "--engine"}, description = "Decompiler engine: cfr (default), vineflower, simple, or jadx.", defaultValue = "cfr")
     private String engine;
 
-    @CommandLine.Option(names = {"-o", "--output"}, description = "Output directory. If omitted, prints to stdout.")
+    @CommandLine.Option(names = {"-o", "--output"}, description = "Output directory (JAR resources are copied under resources/). If omitted, prints source to stdout.")
     private Path output;
 
     @CommandLine.Option(names = {"-b", "--bytecode"}, description = "Print bytecode alongside decompiled source.")
@@ -81,7 +83,10 @@ public class ByteScryCli implements Callable<Integer> {
                 }
                 if (output != null) {
                     int written = artifactDecompiler.exportArtifact(input, output, options);
-                    System.out.println("Exported " + written + " source file(s) to " + output.toAbsolutePath());
+                    ArchiveResourceLoader resourceLoader = new ArchiveResourceLoader();
+                    int resourcesWritten = resourceLoader.export(resourceLoader.load(input), output.resolve("resources"));
+                    System.out.println("Exported " + written + " source file(s), " + resourcesWritten
+                            + " resource(s) to " + output.toAbsolutePath());
                     return 0;
                 }
                 return printArtifactToStdout(artifactDecompiler, options);
@@ -89,8 +94,10 @@ public class ByteScryCli implements Callable<Integer> {
 
             ClassFileLoader loader = new ClassFileLoader();
             List<ClassFile> classFiles = loader.load(input);
+            ArchiveResourceLoader resourceLoader = new ArchiveResourceLoader();
+            List<ResourceFile> resources = output == null ? List.of() : resourceLoader.load(input);
 
-            if (classFiles.isEmpty()) {
+            if (classFiles.isEmpty() && resources.isEmpty()) {
                 System.err.println("No .class files found in " + input);
                 return 1;
             }
@@ -124,7 +131,9 @@ public class ByteScryCli implements Callable<Integer> {
             }
 
             if (output != null) {
-                System.out.println("Decompiled " + results.size() + " class(es) to " + output.toAbsolutePath());
+                int resourcesWritten = resourceLoader.export(resources, output.resolve("resources"));
+                System.out.println("Decompiled " + results.size() + " class(es) and exported "
+                        + resourcesWritten + " resource(s) to " + output.toAbsolutePath());
             }
 
             return anyError ? 2 : 0;

@@ -39,6 +39,11 @@
             <groupId>io.github.skylot</groupId>
             <artifactId>jadx-cli</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.github.skylot</groupId>
+            <artifactId>jadx-core</artifactId>
+            <version>${jadx.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>

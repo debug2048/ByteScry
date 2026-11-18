@@ -4,13 +4,18 @@ import com.github.bytescry.api.ArtifactDecompilerEngine;
 import com.github.bytescry.model.ClassFile;
 import com.github.bytescry.model.DecompilationResult;
 import com.github.bytescry.model.DecompilerOptions;
+import com.github.bytescry.loader.ArchiveResourceLoader;
 import com.github.bytescry.util.JavaRuntime;
+import jadx.api.JadxArgs;
+import jadx.api.JadxDecompiler;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -18,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import java.util.jar.JarFile;
 
 /**
  * JADX-based Android artifact decompiler engine.
@@ -66,11 +72,53 @@ public class JadxEngine implements ArtifactDecompilerEngine {
         if (!supportsArtifact(input)) {
             throw new IOException("JADX supports APK/DEX/AAB/APKS/APKM/XAPK inputs only: " + input);
         }
-        Map<String, String> sources = decompileArtifact(input);
-        return sources.keySet().stream()
-                .sorted(String.CASE_INSENSITIVE_ORDER)
-                .map(name -> new ClassFile(name, new byte[0], input.toString()))
-                .toList();
+        if (ArchiveResourceLoader.isSplitArchive(input)) {
+            List<ClassFile> classes = new ArrayList<>();
+            try (JarFile archive = new JarFile(input.toFile())) {
+                for (var entry : archive.stream().filter(e -> !e.isDirectory()
+                        && e.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".apk")).toList()) {
+                    Path temporary = Files.createTempFile("bytescry-class-index-", ".apk");
+                    try {
+                        try (var stream = archive.getInputStream(entry)) {
+                            Files.copy(stream, temporary, StandardCopyOption.REPLACE_EXISTING);
+                        }
+                        for (ClassFile cls : indexArtifactClasses(temporary)) {
+                            classes.add(new ClassFile(cls.getClassName(), new byte[0], input.toString(),
+                                    entry.getName() + "/" + cls.getEntryPath()));
+                        }
+                    } finally {
+                        Files.deleteIfExists(temporary);
+                    }
+                }
+            }
+            classes.sort(Comparator.comparing(ClassFile::getEntryPath));
+            return classes;
+        }
+        return indexArtifactClasses(input);
+    }
+
+    private List<ClassFile> indexArtifactClasses(Path input) throws IOException {
+        JadxArgs args = new JadxArgs();
+        args.setInputFile(input.toFile());
+        args.setSkipResources(true);
+        args.setSkipFilesSave(true);
+        try (JadxDecompiler decompiler = new JadxDecompiler(args)) {
+            decompiler.load();
+            return decompiler.getClasses().stream()
+                    .map(cls -> {
+                        String container = cls.getClassNode().getInputFileName().replace('\\', '/');
+                        if (input.toString().toLowerCase(java.util.Locale.ROOT).endsWith(".dex")) {
+                            container = input.getFileName().toString();
+                        }
+                        String name = cls.getFullName().replace('.', '/');
+                        String entryPath = container + "/" + cls.getRawName().replace('.', '/') + ".java";
+                        return new ClassFile(name, new byte[0], input.toString(), entryPath);
+                    })
+                    .sorted(Comparator.comparing(ClassFile::getEntryPath))
+                    .toList();
+        } catch (RuntimeException e) {
+            throw new IOException("Failed to index Android classes: " + input, e);
+        }
     }
 
     @Override

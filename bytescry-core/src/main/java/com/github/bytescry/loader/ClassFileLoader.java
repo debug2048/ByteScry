@@ -95,7 +95,7 @@ public class ClassFileLoader {
                 if (bytecodeName != null && !bytecodeName.isEmpty()) {
                     internalName = bytecodeName;
                 }
-                result.add(new ClassFile(internalName, bytes, jarPath.toString()));
+                result.add(new ClassFile(internalName, bytes, jarPath.toString(), entry.getName()));
             }
         }
         return result;
@@ -133,6 +133,8 @@ public class ClassFileLoader {
                 internalName = bytecodeName;
             }
         }
-        return new ClassFile(internalName, bytes, classFile.toString());
+        String entryPath = root == null ? classFile.getFileName().toString()
+                : root.relativize(classFile).toString().replace('\\', '/');
+        return new ClassFile(internalName, bytes, classFile.toString(), entryPath);
     }
 }
